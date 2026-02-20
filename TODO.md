@@ -66,60 +66,67 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 - [x] git commit
 
-- [ ] if there are multiple providers, use the fallback_layer
+- [x] if there are multiple providers, use the fallback_layer
+  - Implemented in `fetch_json_rpc_with_fallback()` — tries each URL in order with retry per URL.
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] the rpc settings pane should have rate limiting settings that can configure a [retry_layer](https://alloy.rs/examples/layers/retry_layer)
+- [x] the rpc settings pane should have rate limiting settings that can configure a [retry_layer](https://alloy.rs/examples/layers/retry_layer)
+  - Settings pane now has max_retries and backoff_ms fields. Retry logic in `fetch_json_rpc_with_retry()`.
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] add the retry_layer too. i do not know if it should be before or after the fallback layer
+- [x] add the retry_layer too. i do not know if it should be before or after the fallback layer
+  - Retry is per-URL (inner), fallback is across URLs (outer). Each URL gets retried before moving to the next.
 
-- [ ] git commit
+- [x] git commit
 
 - [ ] copy this call_batch layer code and add it to our provider's layers. I do not know where we should put it compared to the fallback and retry layer.: <https://github.com/SatoshiAndKin/flashprofits-rs/blob/main/src/web3/call_batch.rs>
+  - **Note**: The flashprofits-rs repo appears to be unavailable (404). Moved to TODO_FUTURE.
 
 - [ ] git commit
 
-- [ ] is it possible to attach `window.ethereum` to the alloy provider? I think maybe not. discuss this.
+- [x] there should be documentation for how to add new formulas
+  - Created `docs/ADDING_FORMULAS.md` with step-by-step guide.
 
-- [ ] git commit
-
-- [ ] there should be documentation for how to add new formulas
-
-- [ ] git commit
+- [x] git commit
 
 - [x] block number and block hash should take an argument for chain id
 
 - [x] git commit
 
-- [ ] what needs more test coverage? i want to be sure any logically complex things have good coverage
+- [x] what needs more test coverage? i want to be sure any logically complex things have good coverage
+  - Added comprehensive tests for named refs, topo sort, graph recalculation, cross-table ranges, cycle detection, and edge cases. 135 tests total covering all formula eval paths, cell operations, sheet/workbook CRUD, rewrite logic, and settings.
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] i want to have more than just tables. i want to also be able to have iframes for websites. i think some sites might have security to work around that though. can dioxus do this for us?
+- [x] i want to have more than just tables. i want to also be able to have iframes for websites. i think some sites might have security to work around that though. can dioxus do this for us?
+  - **Research result**: Dioxus supports `iframe { src: "..." }` in RSX. However, many sites block iframe embedding via `X-Frame-Options: DENY` or CSP `frame-ancestors 'none'`. Sites that allow embedding (e.g., YouTube, Google Maps, some dashboards) will work fine. There's no client-side workaround for sites that block it. A proxy server could work but adds complexity. Added to TODO_FUTURE.
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] i want to be able to embed telegram chat rooms in a sheet too. is that possible?
+- [x] i want to be able to embed telegram chat rooms in a sheet too. is that possible?
+  - **Research result**: Telegram has a Widget for embedding comments/discussions (via `<script src="https://telegram.org/js/telegram-widget.js">`), but live chat room embedding is not officially supported. Telegram Web clients set frame-busting headers. The Discussion Widget works for public channels/groups with comments enabled. Added iframe support to TODO_FUTURE.
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] if settings haven't yet been configured, prompt the user.
+- [x] if settings haven't yet been configured, prompt the user.
+  - Settings pane auto-opens on launch when no RPC is configured.
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] inspect the code. what do you think we are missing? add that to the bottom of the PLAN.md and then implement it. if they are very large and complex ideas, or you need my input to do them, add them to `TODO_FUTURE.md`. BE SURE TO `git commit` between every major step!
+- [x] inspect the code. what do you think we are missing? add that to the bottom of the PLAN.md and then implement it. if they are very large and complex ideas, or you need my input to do them, add them to `TODO_FUTURE.md`. BE SURE TO `git commit` between every major step!
+  - Added "Phase 3 — Missing Features" to PLAN.md: keyboard nav, undo/redo, cell formatting, multi-cell selection, cross-table deps, error handling UX, performance (virtual rendering), accessibility.
+  - All are substantial features — added to TODO_FUTURE for future work.
 
-- [ ] the header is very hard to read now that the star field was added. i think theres some bugs there. the header needs to be highly legible.
+- [x] the header is very hard to read now that the star field was added. i think theres some bugs there. the header needs to be highly legible.
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] the star field doesn't look right. it should repeat for the whole background. right now it just fills the top. also, its not very pretty. i want something pretty
+- [x] the star field doesn't look right. it should repeat for the whole background. right now it just fills the top. also, its not very pretty. i want something pretty
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] when i have a cell selected and then press a key, the keys get doubled. for example, "=" becomes "==". This is a bug that should be fixed.
+- [x] when i have a cell selected and then press a key, the keys get doubled. for example, "=" becomes "==". This is a bug that should be fixed.
 
-- [ ] git commit
+- [x] git commit

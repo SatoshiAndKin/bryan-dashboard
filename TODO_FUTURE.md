@@ -24,3 +24,25 @@
 - [ ] how should getting prices/routes from flashprofits-rs work?
 
 - [ ] is it possible to attach `window.ethereum` to the alloy provider? I think maybe not. discuss this.
+
+- [ ] copy call_batch layer from flashprofits-rs once the repo is available again. The layer would batch multiple JSON-RPC calls into a single request. Should go after retry but before fallback in the layer stack.
+
+- [ ] add iframe widget support to sheets — allow embedding websites alongside tables. Many sites block iframe embedding via X-Frame-Options, so this works best for sites that explicitly allow it (YouTube, Google Maps, dashboards with CORS). Could add a proxy server option later.
+
+- [ ] add Telegram Discussion Widget embedding — use telegram-widget.js for public channels with comments. Live chat room embedding is not officially supported by Telegram.
+
+- [ ] keyboard navigation: arrow keys to move selection, Tab/Shift+Tab for next/prev cell, Enter to commit and move down
+
+- [ ] undo/redo system with command stack
+
+- [ ] cell formatting: number formats (currency, %, dates), text alignment, cell colors/font styles
+
+- [ ] multi-cell selection: shift-click ranges, drag-select, header click to select entire row/col
+
+- [ ] cross-table formula dependency tracking: recalculate dependent tables when a source table changes
+
+- [ ] user-visible error toasts for import failures, RPC connection issues (not just console.error)
+
+- [ ] virtualized table rendering for large tables (only render visible rows/cols)
+
+- [ ] accessibility: ARIA labels on grid cells, screen reader nav, high-contrast mode

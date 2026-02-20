@@ -49,7 +49,11 @@ pub fn WorkbookShell() -> Element {
     let mut ui = use_signal(UiState::default);
     let mut pending_delete: Signal<Option<PendingDelete>> = use_signal(|| None);
     let mut settings = use_signal(load_settings);
-    let mut show_settings = use_signal(|| false);
+    let mut show_settings = use_signal(|| {
+        // Prompt settings if no RPC is configured
+        let s = load_settings();
+        !s.has_rpc()
+    });
     let block_head: Signal<Option<BlockHead>> = use_signal(|| None);
     let mut last_saved: Signal<Option<String>> = use_signal(|| None);
     let balance_cache: Signal<std::collections::HashMap<String, String>> =
@@ -1050,6 +1054,58 @@ async fn fetch_json_rpc(url: &str, body: &str) -> Result<serde_json::Value, Stri
         .ok_or("stringify failed")?;
 
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
+}
+
+/// Fetch JSON-RPC with retry logic (exponential backoff).
+#[cfg(target_arch = "wasm32")]
+async fn fetch_json_rpc_with_retry(
+    url: &str,
+    body: &str,
+    max_retries: u32,
+    backoff_ms: u64,
+) -> Result<serde_json::Value, String> {
+    let mut last_err = String::new();
+    for attempt in 0..=max_retries {
+        match fetch_json_rpc(url, body).await {
+            Ok(val) => return Ok(val),
+            Err(e) => {
+                last_err = e;
+                if attempt < max_retries {
+                    let delay = backoff_ms * (1u64 << attempt.min(5));
+                    gloo_timers::future::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+            }
+        }
+    }
+    Err(format!(
+        "all {} retries failed: {}",
+        max_retries + 1,
+        last_err
+    ))
+}
+
+/// Fetch JSON-RPC with fallback across multiple URLs. Tries each URL in order,
+/// with retry logic per URL.
+#[cfg(target_arch = "wasm32")]
+async fn fetch_json_rpc_with_fallback(
+    urls: &[String],
+    body: &str,
+    max_retries: u32,
+    backoff_ms: u64,
+) -> Result<serde_json::Value, String> {
+    if urls.is_empty() {
+        return Err("no URLs provided".to_string());
+    }
+    let mut last_err = String::new();
+    for url in urls {
+        match fetch_json_rpc_with_retry(url, body, max_retries, backoff_ms).await {
+            Ok(val) => return Ok(val),
+            Err(e) => {
+                last_err = format!("{}: {}", url, e);
+            }
+        }
+    }
+    Err(format!("all providers failed: {}", last_err))
 }
 
 #[cfg(target_arch = "wasm32")]
