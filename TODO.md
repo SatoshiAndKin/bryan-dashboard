@@ -150,9 +150,9 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 - [x] cross-table formula dependency tracking: recalculate dependent tables when a source table changes
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] user-visible error toasts for import failures, RPC connection issues (not just console.error)
+- [x] user-visible error toasts for import failures, RPC connection issues (not just console.error)
 
 - [ ] git commit
 

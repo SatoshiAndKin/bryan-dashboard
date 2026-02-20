@@ -147,6 +147,22 @@ pub fn WorkbookShell() -> Element {
         });
     }
 
+    // Auto-dismiss toasts after 5 seconds
+    {
+        let toast_count = ui.read().toasts.len();
+        use_effect(move || {
+            if toast_count > 0 {
+                spawn(async move {
+                    gloo_timers::future::sleep(std::time::Duration::from_secs(5)).await;
+                    let mut u = ui.write();
+                    if !u.toasts.is_empty() {
+                        u.toasts.remove(0);
+                    }
+                });
+            }
+        });
+    }
+
     let wb = workbook.read();
     let ui_state = ui.read();
 
@@ -462,7 +478,7 @@ pub fn WorkbookShell() -> Element {
                     class: "toolbar-btn",
                     onclick: move |_| {
                         #[cfg(target_arch = "wasm32")]
-                        trigger_file_import(workbook);
+                        trigger_file_import(workbook, ui);
                     },
                     "Import"
                 }
@@ -1199,6 +1215,35 @@ pub fn WorkbookShell() -> Element {
                     }
                 }
             }
+
+            // Toast notifications
+            if !ui_state.toasts.is_empty() {
+                div { class: "toast-container",
+                    for (i, (msg, _ts)) in ui_state.toasts.iter().enumerate() {
+                        {
+                            let idx = i;
+                            let msg = msg.clone();
+                            rsx! {
+                                div {
+                                    key: "toast-{idx}",
+                                    class: "toast",
+                                    span { class: "toast-message", "{msg}" }
+                                    button {
+                                        class: "toast-dismiss",
+                                        onclick: move |_| {
+                                            let mut u = ui.write();
+                                            if idx < u.toasts.len() {
+                                                u.toasts.remove(idx);
+                                            }
+                                        },
+                                        "x"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -1244,7 +1289,7 @@ fn download_file(filename: &str, content: &str) {
 
 /// Trigger a file input dialog for import
 #[cfg(target_arch = "wasm32")]
-fn trigger_file_import(mut workbook: Signal<crate::model::WorkbookState>) {
+fn trigger_file_import(mut workbook: Signal<crate::model::WorkbookState>, mut ui: Signal<UiState>) {
     use wasm_bindgen::prelude::Closure;
     use wasm_bindgen::JsCast;
 
@@ -1301,7 +1346,7 @@ fn trigger_file_import(mut workbook: Signal<crate::model::WorkbookState>) {
                     workbook.set(wb);
                 }
                 Err(e) => {
-                    web_sys::console::error_1(&format!("Import error: {e}").into());
+                    push_toast(&mut ui, format!("Import failed: {e}"));
                 }
             }
         });
@@ -1311,6 +1356,12 @@ fn trigger_file_import(mut workbook: Signal<crate::model::WorkbookState>) {
     input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
     onchange.forget();
     input.click();
+}
+
+#[cfg(target_arch = "wasm32")]
+fn push_toast(ui: &mut Signal<UiState>, message: String) {
+    let ts = js_sys::Date::now();
+    ui.write().toasts.push((message, ts));
 }
 
 /// Connect to Ethereum RPC and update block_head signal
