@@ -561,6 +561,14 @@ pub fn WorkbookShell() -> Element {
             div { class: "starfield-layer stars-sm" }
             div { class: "starfield-layer stars-md" }
             div { class: "starfield-layer stars-lg" }
+            div { class: "sparkle-star" }
+            div { class: "sparkle-star" }
+            div { class: "sparkle-star" }
+            div { class: "sparkle-star" }
+            div { class: "sparkle-star" }
+            div { class: "sparkle-star" }
+            div { class: "sparkle-star" }
+            div { class: "sparkle-star" }
             BuddyCharacter { messages: buddy_messages.read().clone() }
 
             // Sheet tabs (top bar) + last saved timestamp
