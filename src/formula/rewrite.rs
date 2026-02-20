@@ -347,4 +347,52 @@ mod tests {
         // All pinned
         assert_eq!(shift_refs_in_source("=$A$1+$B$2", 5, 5), "=$A$1+$B$2");
     }
+
+    #[test]
+    fn test_shift_row_refs_above_unaffected() {
+        assert_eq!(shift_row_refs("=A1+A2", 2), "=A1+A2");
+    }
+
+    #[test]
+    fn test_shift_row_refs_below_shifts() {
+        // Delete row 1 (0-indexed), row 3 (=A4 in formula) -> becomes row 2 (=A3)
+        assert_eq!(shift_row_refs("=A4", 1), "=A3");
+    }
+
+    #[test]
+    fn test_shift_row_refs_deleted_becomes_ref_error() {
+        assert_eq!(shift_row_refs("=A2", 1), "=#REF!");
+    }
+
+    #[test]
+    fn test_shift_col_refs_left_unaffected() {
+        assert_eq!(shift_col_refs("=A1+B1", 2), "=A1+B1");
+    }
+
+    #[test]
+    fn test_shift_col_refs_right_shifts() {
+        // Delete col 1 (B), D1 -> becomes C1
+        assert_eq!(shift_col_refs("=D1", 1), "=C1");
+    }
+
+    #[test]
+    fn test_shift_col_refs_deleted_becomes_ref_error() {
+        assert_eq!(shift_col_refs("=B1", 1), "=#REF!");
+    }
+
+    #[test]
+    fn test_rewrite_ref_in_source_case_insensitive() {
+        assert_eq!(rewrite_ref_in_source("=a1+B2", "A1", "C3"), "=C3+B2");
+    }
+
+    #[test]
+    fn test_shift_refs_zero_delta() {
+        assert_eq!(shift_refs_in_source("=A1+B2", 0, 0), "=A1+B2");
+    }
+
+    #[test]
+    fn test_shift_refs_negative_clamped() {
+        // Shifting A1 by -5 columns should clamp to column 0 (A)
+        assert_eq!(shift_refs_in_source("=A1", -5, 0), "=A1");
+    }
 }

@@ -172,3 +172,152 @@ impl Lexer {
         i + 1 < self.chars.len() && self.chars[i] == ':' && self.chars[i + 1] == ':'
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tokenize(input: &str) -> Vec<Token> {
+        let mut lexer = Lexer::new(input);
+        lexer.tokenize().unwrap()
+    }
+
+    #[test]
+    fn test_number() {
+        let tokens = tokenize("42");
+        assert_eq!(tokens, vec![Token::Number(42.0), Token::Eof]);
+    }
+
+    #[test]
+    fn test_decimal() {
+        let tokens = tokenize("3.14");
+        assert_eq!(tokens, vec![Token::Number(3.14), Token::Eof]);
+    }
+
+    #[test]
+    fn test_operators() {
+        let tokens = tokenize("+-*/");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Plus,
+                Token::Minus,
+                Token::Star,
+                Token::Slash,
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parens_and_comma() {
+        let tokens = tokenize("(A1, B2)");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::LParen,
+                Token::Ident("A1".to_string()),
+                Token::Comma,
+                Token::Ident("B2".to_string()),
+                Token::RParen,
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_colon_vs_double_colon() {
+        let tokens = tokenize("A1:B2");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Ident("A1".to_string()),
+                Token::Colon,
+                Token::Ident("B2".to_string()),
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_double_colon() {
+        let tokens = tokenize("Table 1::A1");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Ident("Table 1".to_string()),
+                Token::DoubleColon,
+                Token::Ident("A1".to_string()),
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_dollar_sign() {
+        let tokens = tokenize("$A$1");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Dollar,
+                Token::Ident("A".to_string()),
+                Token::Dollar,
+                Token::Number(1.0),
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_whitespace_skipping() {
+        let tokens = tokenize("  1  +  2  ");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(1.0),
+                Token::Plus,
+                Token::Number(2.0),
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_function_call() {
+        let tokens = tokenize("SUM(A1:A5)");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Ident("SUM".to_string()),
+                Token::LParen,
+                Token::Ident("A1".to_string()),
+                Token::Colon,
+                Token::Ident("A5".to_string()),
+                Token::RParen,
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_cross_sheet_ref() {
+        let tokens = tokenize("Sheet 1::Table 1::A1");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Ident("Sheet 1".to_string()),
+                Token::DoubleColon,
+                Token::Ident("Table 1".to_string()),
+                Token::DoubleColon,
+                Token::Ident("A1".to_string()),
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_unexpected_char_error() {
+        let mut lexer = Lexer::new("@");
+        assert!(lexer.tokenize().is_err());
+    }
+}

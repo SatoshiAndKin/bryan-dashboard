@@ -105,3 +105,89 @@ impl Sheet {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_sheet_has_one_table() {
+        let sheet = Sheet::new(1, "S1".to_string());
+        assert_eq!(sheet.tables.len(), 1);
+        assert_eq!(sheet.active_table_id, 1);
+    }
+
+    #[test]
+    fn test_add_table() {
+        let mut sheet = Sheet::new(1, "S1".to_string());
+        let id = sheet.add_table("Table 2".to_string(), 4, 3);
+        assert_eq!(sheet.tables.len(), 2);
+        assert_eq!(sheet.active_table_id, id);
+    }
+
+    #[test]
+    fn test_add_table_unique_name() {
+        let mut sheet = Sheet::new(1, "S1".to_string());
+        sheet.add_table("Table 1".to_string(), 4, 3);
+        assert_eq!(sheet.tables[1].name, "Table 1 (2)");
+    }
+
+    #[test]
+    fn test_delete_table_cannot_delete_last() {
+        let mut sheet = Sheet::new(1, "S1".to_string());
+        let id = sheet.tables[0].id;
+        sheet.delete_table(id);
+        assert_eq!(sheet.tables.len(), 1);
+    }
+
+    #[test]
+    fn test_delete_table_switches_active() {
+        let mut sheet = Sheet::new(1, "S1".to_string());
+        let id1 = sheet.tables[0].id;
+        let id2 = sheet.add_table("T2".to_string(), 3, 3);
+        sheet.active_table_id = id1;
+        sheet.delete_table(id1);
+        assert_eq!(sheet.active_table_id, id2);
+    }
+
+    #[test]
+    fn test_rename_table() {
+        let mut sheet = Sheet::new(1, "S1".to_string());
+        let id = sheet.tables[0].id;
+        sheet.rename_table(id, "My Table".to_string());
+        assert_eq!(sheet.tables[0].name, "My Table");
+    }
+
+    #[test]
+    fn test_rename_table_avoids_conflict() {
+        let mut sheet = Sheet::new(1, "S1".to_string());
+        let id2 = sheet.add_table("Table 2".to_string(), 3, 3);
+        sheet.rename_table(id2, "Table 1".to_string());
+        assert_eq!(
+            sheet.tables.iter().find(|t| t.id == id2).unwrap().name,
+            "Table 1 (2)"
+        );
+    }
+
+    #[test]
+    fn test_table_by_name() {
+        let mut sheet = Sheet::new(1, "S1".to_string());
+        sheet.add_table("Prices".to_string(), 3, 3);
+        assert!(sheet.table_by_name("Prices").is_some());
+        assert!(sheet.table_by_name("Nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_recalculate_all() {
+        let mut sheet = Sheet::new(1, "S1".to_string());
+        let t = sheet.active_table_mut().unwrap();
+        t.set_cell_source(0, 0, "10".to_string());
+        t.set_cell_source(0, 1, "=A1*3".to_string());
+        sheet.recalculate_all();
+        let t = sheet.active_table().unwrap();
+        assert_eq!(
+            t.cells[&(0, 1)].computed,
+            crate::model::cell::CellValue::Number(30.0)
+        );
+    }
+}

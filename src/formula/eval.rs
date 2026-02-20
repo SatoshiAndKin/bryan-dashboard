@@ -300,3 +300,232 @@ fn collect_values(args: &[Expr], ctx: &EvalContext) -> Vec<CellValue> {
     }
     values
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::formula::graph::recalculate_table;
+    use crate::formula::graph::recalculate_table_full;
+    use crate::model::table::TableModel;
+
+    fn make_table(rows: u32, cols: u32) -> TableModel {
+        TableModel::new(1, "T".to_string(), rows, cols)
+    }
+
+    #[test]
+    fn test_sum_with_empties() {
+        let mut t = make_table(4, 1);
+        t.set_cell_source(0, 0, "1".to_string());
+        // row 1 empty
+        t.set_cell_source(0, 2, "3".to_string());
+        t.set_cell_source(0, 3, "=SUM(A1:A3)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 3)].computed, CellValue::Number(4.0));
+    }
+
+    #[test]
+    fn test_avg_ignores_empties() {
+        let mut t = make_table(4, 1);
+        t.set_cell_source(0, 0, "10".to_string());
+        // row 1 empty
+        t.set_cell_source(0, 2, "20".to_string());
+        t.set_cell_source(0, 3, "=AVG(A1:A3)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 3)].computed, CellValue::Number(15.0));
+    }
+
+    #[test]
+    fn test_avg_all_empty() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 1, "=AVG(A1:A1)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 1)].computed,
+            CellValue::Error("#DIV/0!".to_string())
+        );
+    }
+
+    #[test]
+    fn test_unknown_function() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=FOOBAR()".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 0)].computed,
+            CellValue::Error("#NAME? FOOBAR".to_string())
+        );
+    }
+
+    #[test]
+    fn test_ref_out_of_bounds() {
+        let mut t = make_table(2, 2);
+        t.set_cell_source(0, 0, "=Z99".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 0)].computed,
+            CellValue::Error("#REF!".to_string())
+        );
+    }
+
+    #[test]
+    fn test_text_coercion_in_arithmetic() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "5".to_string());
+        t.set_cell_source(0, 1, "=A1+10".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(15.0));
+    }
+
+    #[test]
+    fn test_text_non_numeric_in_arithmetic() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "hello".to_string());
+        t.set_cell_source(0, 1, "=A1+10".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(t.cells[&(0, 1)].computed, CellValue::Error(_)));
+    }
+
+    #[test]
+    fn test_unary_neg_on_empty() {
+        let mut t = make_table(2, 1);
+        // A1 is empty
+        t.set_cell_source(0, 1, "=-A1".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(0.0));
+    }
+
+    #[test]
+    fn test_cross_table_ref() {
+        let mut t1 = TableModel::new(1, "Table 1".to_string(), 2, 2);
+        t1.set_cell_source(0, 0, "42".to_string());
+        recalculate_table(&mut t1);
+
+        let mut t2 = TableModel::new(2, "Table 2".to_string(), 2, 2);
+        t2.set_cell_source(0, 0, "=Table 1::A1".to_string());
+
+        let siblings = vec![t1.clone()];
+        recalculate_table_full(&mut t2, &siblings, None);
+        assert_eq!(t2.cells[&(0, 0)].computed, CellValue::Number(42.0));
+    }
+
+    #[test]
+    fn test_cross_table_ref_not_found() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=NoTable::A1".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 0)].computed,
+            CellValue::Error("#REF!".to_string())
+        );
+    }
+
+    #[test]
+    fn test_block_timestamp_formula() {
+        let bh = crate::eth::BlockHead {
+            number: 100,
+            hash: "0xabc".to_string(),
+            timestamp: 1700000000,
+            base_fee: Some(50),
+        };
+        let mut t = make_table(3, 1);
+        t.set_cell_source(0, 0, "=BLOCK_TIMESTAMP()".to_string());
+        t.set_cell_source(0, 1, "=BASE_FEE()".to_string());
+        t.set_cell_source(0, 2, "=BLOCK()".to_string());
+        recalculate_table_full(&mut t, &[], Some(&bh));
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(1700000000.0));
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(50.0));
+        assert_eq!(t.cells[&(0, 2)].computed, CellValue::Number(100.0));
+    }
+
+    #[test]
+    fn test_eth_balance_no_args() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=ETH_BALANCE()".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(t.cells[&(0, 0)].computed, CellValue::Error(_)));
+    }
+
+    #[test]
+    fn test_eth_balance_invalid_address() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "not_an_address".to_string());
+        t.set_cell_source(0, 1, "=ETH_BALANCE(A1)".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(t.cells[&(0, 1)].computed, CellValue::Error(_)));
+    }
+
+    #[test]
+    fn test_eth_balance_cached() {
+        use crate::formula::graph::recalculate_table_with_ctx;
+
+        let addr = "0x0000000000000000000000000000000000000001";
+        let mut cache = std::collections::HashMap::new();
+        // 1 ETH = 1e18 wei = 0xde0b6b3a7640000
+        cache.insert(addr.to_string(), "0xde0b6b3a7640000".to_string());
+
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, addr.to_string());
+        t.set_cell_source(0, 1, "=ETH_BALANCE(A1)".to_string());
+        recalculate_table_with_ctx(&mut t, &[], None, Some(&cache), None);
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(1.0));
+    }
+
+    #[test]
+    fn test_eth_balance_pending_lookup() {
+        use crate::formula::graph::recalculate_table_with_ctx;
+
+        let addr = "0x0000000000000000000000000000000000000001";
+        let pending = std::cell::RefCell::new(Vec::<String>::new());
+
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, addr.to_string());
+        t.set_cell_source(0, 1, "=ETH_BALANCE(A1)".to_string());
+        recalculate_table_with_ctx(&mut t, &[], None, None, Some(&pending));
+        assert_eq!(
+            t.cells[&(0, 1)].computed,
+            CellValue::Text("#LOADING...".to_string())
+        );
+        assert_eq!(pending.borrow().len(), 1);
+        assert_eq!(pending.borrow()[0], addr);
+    }
+
+    #[test]
+    fn test_nested_arithmetic() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=(2+3)*(10-4)/2".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(15.0));
+    }
+
+    #[test]
+    fn test_sum_multiple_args() {
+        let mut t = make_table(3, 2);
+        t.set_cell_source(0, 0, "1".to_string());
+        t.set_cell_source(1, 0, "2".to_string());
+        t.set_cell_source(0, 1, "3".to_string());
+        t.set_cell_source(0, 2, "=SUM(A1, B1, A2)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 2)].computed, CellValue::Number(6.0));
+    }
+
+    #[test]
+    fn test_error_propagation_in_sum() {
+        let mut t = make_table(3, 1);
+        t.set_cell_source(0, 0, "1".to_string());
+        t.set_cell_source(0, 1, "=1/0".to_string());
+        t.set_cell_source(0, 2, "=SUM(A1:A2)".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(t.cells[&(0, 2)].computed, CellValue::Error(_)));
+    }
+
+    #[test]
+    fn test_chained_formulas() {
+        let mut t = make_table(3, 1);
+        t.set_cell_source(0, 0, "10".to_string());
+        t.set_cell_source(0, 1, "=A1*2".to_string());
+        t.set_cell_source(0, 2, "=A2+5".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(20.0));
+        assert_eq!(t.cells[&(0, 2)].computed, CellValue::Number(25.0));
+    }
+}
