@@ -705,4 +705,38 @@ mod tests {
         recalculate_table(&mut t);
         assert_eq!(t.cells[&(0, 2)].computed, CellValue::Number(15.0));
     }
+
+    #[test]
+    fn test_named_ref_resolves_in_different_rows() {
+        let mut t = TableModel::new(1, "T".to_string(), 4, 3);
+        t.header_rows = 1;
+        t.set_cell_source(0, 0, "Item".to_string());
+        t.set_cell_source(1, 0, "Price".to_string());
+        t.set_cell_source(2, 0, "Double".to_string());
+        t.set_cell_source(1, 1, "10".to_string());
+        t.set_cell_source(1, 2, "25".to_string());
+        t.set_cell_source(1, 3, "50".to_string());
+        t.set_cell_source(2, 1, "=Price*2".to_string());
+        t.set_cell_source(2, 2, "=Price*2".to_string());
+        t.set_cell_source(2, 3, "=Price*2".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(2, 1)].computed, CellValue::Number(20.0));
+        assert_eq!(t.cells[&(2, 2)].computed, CellValue::Number(50.0));
+        assert_eq!(t.cells[&(2, 3)].computed, CellValue::Number(100.0));
+    }
+
+    #[test]
+    fn test_named_ref_in_sum_function() {
+        let mut t = TableModel::new(1, "T".to_string(), 3, 2);
+        t.header_rows = 1;
+        t.set_cell_source(0, 0, "Val".to_string());
+        t.set_cell_source(1, 0, "Result".to_string());
+        t.set_cell_source(0, 1, "10".to_string());
+        t.set_cell_source(0, 2, "20".to_string());
+        t.set_cell_source(1, 1, "=Val+5".to_string());
+        t.set_cell_source(1, 2, "=Val+5".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(1, 1)].computed, CellValue::Number(15.0));
+        assert_eq!(t.cells[&(1, 2)].computed, CellValue::Number(25.0));
+    }
 }

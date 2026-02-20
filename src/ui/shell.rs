@@ -128,6 +128,22 @@ pub fn WorkbookShell() -> Element {
         })
         .unwrap_or_default();
 
+    let sel_pretty_name = selected.and_then(|(tid, col, row)| {
+        active_sheet
+            .as_ref()
+            .and_then(|s| s.table_by_id(tid))
+            .and_then(|t| {
+                let col_name = t.col_pretty_name(col);
+                let row_name = t.row_pretty_name(row);
+                match (col_name, row_name) {
+                    (Some(cn), Some(rn)) => Some(format!("{}, {}", cn, rn)),
+                    (Some(cn), None) => Some(cn),
+                    (None, Some(rn)) => Some(rn),
+                    (None, None) => None,
+                }
+            })
+    });
+
     rsx! {
         div {
             class: "workbook-shell",
@@ -448,6 +464,9 @@ pub fn WorkbookShell() -> Element {
                 if let Some((col, row)) = sel_info {
                     span { class: "cell-indicator",
                         "{col_index_to_label(col)}{row + 1}"
+                    }
+                    if let Some(ref pretty) = sel_pretty_name {
+                        span { class: "cell-indicator-name", "{pretty}" }
                     }
                 }
                 if editing.is_some() {

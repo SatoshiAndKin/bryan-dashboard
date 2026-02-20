@@ -223,6 +223,12 @@ body {
     text-align: center;
 }
 
+.cell-indicator-name {
+    font-size: 11px;
+    color: #6878a8;
+    font-style: italic;
+}
+
 .formula-bar {
     flex: 1;
     background: #0d1b2a;
