@@ -76,7 +76,8 @@ pub fn CellView(
                     },
                     oninput: move |e| on_edit_change.call(e.value()),
                     onkeydown: move |e| {
-                        if e.key() == Key::Enter {
+                        if e.key() == Key::Enter || e.key() == Key::Tab {
+                            e.prevent_default();
                             on_commit.call(());
                         } else if e.key() == Key::Escape {
                             on_cancel.call(());

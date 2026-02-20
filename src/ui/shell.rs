@@ -25,6 +25,15 @@ pub enum PendingDelete {
     Col(TableId, u32),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct UndoEntry {
+    pub table_id: TableId,
+    pub col: u32,
+    pub row: u32,
+    pub old_source: String,
+    pub new_source: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct UiState {
     /// (table_id, col, row)
@@ -35,6 +44,10 @@ pub struct UiState {
     pub edit_buffer: String,
     pub clipboard: Option<(TableId, u32, u32)>,
     pub dragging: Option<(TableId, u32, u32)>,
+    pub undo_stack: Vec<UndoEntry>,
+    pub redo_stack: Vec<UndoEntry>,
+    /// Toast messages: (message, timestamp_ms)
+    pub toasts: Vec<(String, f64)>,
 }
 
 #[component]
@@ -154,78 +167,177 @@ pub fn WorkbookShell() -> Element {
             tabindex: "0",
             onkeydown: move |e| {
                 let ctrl = e.modifiers().meta() || e.modifiers().ctrl();
-                if ctrl && e.key() == Key::Character("c".to_string()) {
-                    let u = ui.read();
-                    if u.editing.is_none() {
-                        if let Some(sel) = u.selected {
-                            drop(u);
-                            ui.write().clipboard = Some(sel);
-                        }
+                let shift = e.modifiers().shift();
+                let is_editing = ui.read().editing.is_some();
+
+                // --- Ctrl shortcuts ---
+                if ctrl && e.key() == Key::Character("c".to_string()) && !is_editing {
+                    let sel = ui.read().selected;
+                    if let Some(sel) = sel {
+                        ui.write().clipboard = Some(sel);
                     }
-                } else if ctrl && e.key() == Key::Character("v".to_string()) {
-                    let u = ui.read();
-                    if u.editing.is_none() {
-                        if let (Some(from), Some(to)) = (u.clipboard, u.selected) {
-                            if from.0 == to.0 {
-                                drop(u);
-                                let mut wb = workbook.write();
-                                if let Some(sheet) = wb.active_sheet_mut() {
-                                    if let Some(table) = sheet.table_by_id_mut(from.0) {
-                                        table.copy_cell((from.1, from.2), (to.1, to.2));
-                                        recalculate_table(table);
-                                    }
-                                }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
-                            }
-                        }
-                    }
-                } else if ctrl && e.key() == Key::Character("x".to_string()) {
-                    let u = ui.read();
-                    if u.editing.is_none() {
-                        if let Some(sel) = u.selected {
-                            drop(u);
-                            ui.write().clipboard = Some(sel);
+                    return;
+                }
+                if ctrl && e.key() == Key::Character("v".to_string()) && !is_editing {
+                    let (clipboard, selected) = {
+                        let u = ui.read();
+                        (u.clipboard, u.selected)
+                    };
+                    if let (Some(from), Some(to)) = (clipboard, selected) {
+                        if from.0 == to.0 {
                             let mut wb = workbook.write();
                             if let Some(sheet) = wb.active_sheet_mut() {
-                                if let Some(table) = sheet.table_by_id_mut(sel.0) {
-                                    table.set_cell_source(sel.1, sel.2, String::new());
+                                if let Some(table) = sheet.table_by_id_mut(from.0) {
+                                    table.copy_cell((from.1, from.2), (to.1, to.2));
                                     recalculate_table(table);
                                 }
                             }
                             save_workbook(&wb); last_saved.set(Some(now_string()));
                         }
                     }
-                } else if !ctrl {
-                    // Type-to-edit: start editing when a printable key is pressed on a selected cell
-                    let u = ui.read();
-                    if u.editing.is_none() {
-                        if let Some((tid, col, row)) = u.selected {
-                            let ch = match e.key() {
-                                Key::Character(ref s) if !s.is_empty() => Some(s.clone()),
-                                _ => None,
-                            };
-                            if let Some(ch) = ch {
-                                // Ignore modifier-only or navigation keys
-                                if e.key() != Key::Tab
-                                    && e.key() != Key::Escape
-                                    && e.key() != Key::Enter
-                                    && e.key() != Key::Backspace
-                                    && e.key() != Key::Delete
-                                {
-                                    // Prevent the keystroke from also being typed into the
-                                    // input that will appear, which would double the character.
+                    return;
+                }
+                if ctrl && e.key() == Key::Character("x".to_string()) && !is_editing {
+                    let sel = ui.read().selected;
+                    if let Some(sel) = sel {
+                        ui.write().clipboard = Some(sel);
+                        let old_source = {
+                            let wb = workbook.read();
+                            wb.active_sheet()
+                                .and_then(|s| s.table_by_id(sel.0))
+                                .and_then(|t| t.cells.get(&(sel.1, sel.2)))
+                                .map(|c| c.source.clone())
+                                .unwrap_or_default()
+                        };
+                        let mut wb = workbook.write();
+                        if let Some(sheet) = wb.active_sheet_mut() {
+                            if let Some(table) = sheet.table_by_id_mut(sel.0) {
+                                table.set_cell_source(sel.1, sel.2, String::new());
+                                recalculate_table(table);
+                            }
+                        }
+                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                        if !old_source.is_empty() {
+                            let mut u = ui.write();
+                            u.undo_stack.push(UndoEntry {
+                                table_id: sel.0, col: sel.1, row: sel.2,
+                                old_source, new_source: String::new(),
+                            });
+                            u.redo_stack.clear();
+                        }
+                    }
+                    return;
+                }
+                // Undo: Ctrl+Z
+                if ctrl && !shift && e.key() == Key::Character("z".to_string()) {
+                    e.prevent_default();
+                    let entry = ui.write().undo_stack.pop();
+                    if let Some(entry) = entry {
+                        let mut wb = workbook.write();
+                        if let Some(sheet) = wb.active_sheet_mut() {
+                            if let Some(table) = sheet.table_by_id_mut(entry.table_id) {
+                                table.set_cell_source(entry.col, entry.row, entry.old_source.clone());
+                                recalculate_table(table);
+                            }
+                        }
+                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                        ui.write().redo_stack.push(entry);
+                    }
+                    return;
+                }
+                // Redo: Ctrl+Shift+Z or Ctrl+Y
+                if (ctrl && shift && e.key() == Key::Character("z".to_string()))
+                    || (ctrl && e.key() == Key::Character("y".to_string()))
+                {
+                    e.prevent_default();
+                    let entry = ui.write().redo_stack.pop();
+                    if let Some(entry) = entry {
+                        let mut wb = workbook.write();
+                        if let Some(sheet) = wb.active_sheet_mut() {
+                            if let Some(table) = sheet.table_by_id_mut(entry.table_id) {
+                                table.set_cell_source(entry.col, entry.row, entry.new_source.clone());
+                                recalculate_table(table);
+                            }
+                        }
+                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                        ui.write().undo_stack.push(entry);
+                    }
+                    return;
+                }
+
+                if ctrl { return; }
+
+                // --- Non-editing navigation ---
+                let selected_cell = if !is_editing { ui.read().selected } else { None };
+                if let Some((tid, col, row)) = selected_cell {
+                        let table_bounds = {
+                            let wb = workbook.read();
+                            wb.active_sheet()
+                                .and_then(|s| s.table_by_id(tid))
+                                .map(|t| (t.cols, t.rows))
+                        };
+                        if let Some((max_c, max_r)) = table_bounds {
+                            let (new_col, new_row) = match e.key() {
+                                Key::ArrowUp => (col, row.saturating_sub(1)),
+                                Key::ArrowDown => (col, (row + 1).min(max_r - 1)),
+                                Key::ArrowLeft => (col.saturating_sub(1), row),
+                                Key::ArrowRight => ((col + 1).min(max_c - 1), row),
+                                Key::Tab if shift => (col.saturating_sub(1), row),
+                                Key::Tab => ((col + 1).min(max_c - 1), row),
+                                Key::Enter => (col, (row + 1).min(max_r - 1)),
+                                Key::Backspace | Key::Delete => {
                                     e.prevent_default();
-                                    drop(u);
-                                    let sid = workbook.read().active_sheet_id;
-                                    let mut u = ui.write();
-                                    u.editing = Some((tid, col, row));
-                                    u.editing_sheet_id = Some(sid);
-                                    u.edit_buffer = ch;
+                                    let old_source = {
+                                        let wb = workbook.read();
+                                        wb.active_sheet()
+                                            .and_then(|s| s.table_by_id(tid))
+                                            .and_then(|t| t.cells.get(&(col, row)))
+                                            .map(|c| c.source.clone())
+                                            .unwrap_or_default()
+                                    };
+                                    if !old_source.is_empty() {
+                                        let mut wb = workbook.write();
+                                        if let Some(sheet) = wb.active_sheet_mut() {
+                                            if let Some(table) = sheet.table_by_id_mut(tid) {
+                                                table.set_cell_source(col, row, String::new());
+                                                recalculate_table(table);
+                                            }
+                                        }
+                                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                                        let mut u = ui.write();
+                                        u.undo_stack.push(UndoEntry {
+                                            table_id: tid, col, row,
+                                            old_source, new_source: String::new(),
+                                        });
+                                        u.redo_stack.clear();
+                                    }
+                                    return;
                                 }
+                                _ => {
+                                    // Type-to-edit
+                                    let ch = match e.key() {
+                                        Key::Character(ref s) if !s.is_empty() => Some(s.clone()),
+                                        _ => None,
+                                    };
+                                    if let Some(ch) = ch {
+                                        if e.key() != Key::Escape {
+                                            e.prevent_default();
+                                            let sid = workbook.read().active_sheet_id;
+                                            let mut u = ui.write();
+                                            u.editing = Some((tid, col, row));
+                                            u.editing_sheet_id = Some(sid);
+                                            u.edit_buffer = ch;
+                                        }
+                                    }
+                                    return;
+                                }
+                            };
+                            if (new_col, new_row) != (col, row) {
+                                e.prevent_default();
+                                ui.write().selected = Some((tid, new_col, new_row));
                             }
                         }
                     }
-                }
             },
 
             Starfield {}
@@ -615,15 +727,32 @@ pub fn WorkbookShell() -> Element {
                                             on_commit_edit: move |_: ()| {
                                                 let u = ui.read();
                                                 if let Some((etid, col, row)) = u.editing {
-                                                    let source = u.edit_buffer.clone();
+                                                    let new_source = u.edit_buffer.clone();
                                                     let esid = u.editing_sheet_id;
                                                     drop(u);
+                                                    let old_source = {
+                                                        let wb = workbook.read();
+                                                        let target_sid = esid.unwrap_or(wb.active_sheet_id);
+                                                        wb.sheets.iter().find(|s| s.id == target_sid)
+                                                            .and_then(|s| s.table_by_id(etid))
+                                                            .and_then(|t| t.cells.get(&(col, row)))
+                                                            .map(|c| c.source.clone())
+                                                            .unwrap_or_default()
+                                                    };
+                                                    let max_row = {
+                                                        let wb = workbook.read();
+                                                        let target_sid = esid.unwrap_or(wb.active_sheet_id);
+                                                        wb.sheets.iter().find(|s| s.id == target_sid)
+                                                            .and_then(|s| s.table_by_id(etid))
+                                                            .map(|t| t.rows)
+                                                            .unwrap_or(1)
+                                                    };
                                                     {
                                                         let mut wb = workbook.write();
                                                         let target_sid = esid.unwrap_or(wb.active_sheet_id);
                                                         if let Some(sheet) = wb.sheets.iter_mut().find(|s| s.id == target_sid) {
                                                             if let Some(table) = sheet.table_by_id_mut(etid) {
-                                                                table.set_cell_source(col, row, source);
+                                                                table.set_cell_source(col, row, new_source.clone());
                                                                 recalculate_table(table);
                                                             }
                                                         }
@@ -632,6 +761,16 @@ pub fn WorkbookShell() -> Element {
                                                     let mut u = ui.write();
                                                     u.editing = None;
                                                     u.editing_sheet_id = None;
+                                                    // Move selection down after commit
+                                                    u.selected = Some((etid, col, (row + 1).min(max_row - 1)));
+                                                    // Record undo
+                                                    if old_source != new_source {
+                                                        u.undo_stack.push(UndoEntry {
+                                                            table_id: etid, col, row,
+                                                            old_source, new_source,
+                                                        });
+                                                        u.redo_stack.clear();
+                                                    }
                                                 }
                                             },
                                             on_cancel_edit: move |_: ()| {

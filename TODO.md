@@ -131,3 +131,35 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 - [x] when i have a cell selected and then press a key, the keys get doubled. for example, "=" becomes "==". This is a bug that should be fixed.
 
 - [x] git commit
+
+- [ ] keyboard navigation: arrow keys to move selection, Tab/Shift+Tab for next/prev cell, Enter to commit and move down
+
+- [ ] git commit
+
+- [ ] undo/redo system with command stack
+
+- [ ] git commit
+
+- [ ] cell formatting: number formats (currency, %, dates), text alignment, cell colors/font styles
+
+- [ ] git commit
+
+- [ ] multi-cell selection: shift-click ranges, drag-select, header click to select entire row/col
+
+- [ ] git commit
+
+- [ ] cross-table formula dependency tracking: recalculate dependent tables when a source table changes
+
+- [ ] git commit
+
+- [ ] user-visible error toasts for import failures, RPC connection issues (not just console.error)
+
+- [ ] git commit
+
+- [ ] virtualized table rendering for large tables (only render visible rows/cols)
+
+- [ ] git commit
+
+- [ ] accessibility: ARIA labels on grid cells, screen reader nav, high-contrast mode
+
+- [ ] git commit
