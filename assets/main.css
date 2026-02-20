@@ -24,12 +24,28 @@ body {
     outline: none;
 }
 
+/* Tabs Row (tabs + last saved) */
+.tabs-row {
+    display: flex;
+    align-items: center;
+    background: #16213e;
+    border-bottom: 1px solid #0f3460;
+    flex-shrink: 0;
+}
+
+.last-saved {
+    font-size: 10px;
+    color: #6878a8;
+    padding: 0 14px;
+    white-space: nowrap;
+    margin-left: auto;
+}
+
 /* Table Tabs */
 .table-tabs {
     display: flex;
     align-items: center;
     background: #16213e;
-    border-bottom: 1px solid #0f3460;
     padding: 0 8px;
     height: 36px;
     flex-shrink: 0;
@@ -64,10 +80,17 @@ body {
 }
 
 .tab.add-tab {
-    color: #4a90d9;
-    font-size: 16px;
-    font-weight: bold;
+    color: #6878a8;
+    font-size: 14px;
+    font-weight: 500;
     padding: 4px 12px;
+    opacity: 0.7;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.tab.add-tab:hover {
+    color: #4a90d9;
+    opacity: 1;
 }
 
 .tab-delete {
@@ -218,6 +241,18 @@ body {
     color: #8888a8;
 }
 
+/* Formula Bar Row */
+.formula-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    background: #16213e;
+    border-bottom: 1px solid #0f3460;
+    flex-shrink: 0;
+    min-height: 30px;
+}
+
 /* Sheet Content (canvas + sidebar) */
 .sheet-content {
     display: flex;
@@ -230,19 +265,52 @@ body {
     flex: 1;
     min-width: 0;
     overflow: auto;
-    background: #141428;
+    background: #0a0a1a;
     padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 32px;
+    align-items: flex-start;
+    position: relative;
+}
+
+.starfield {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+}
+
+.canvas-area > .canvas-table {
+    position: relative;
+    z-index: 1;
+}
+
+/* Buddy Character */
+.buddy {
+    position: fixed;
+    z-index: 50;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 14px;
+    color: #6878a8;
+    pointer-events: none;
+    user-select: none;
+    text-shadow: 0 0 8px rgba(104, 120, 168, 0.5);
+    transition: color 0.3s;
 }
 
 .canvas-table {
     border: 1px solid #1e2a4a;
     border-radius: 8px;
     background: #1a1a2e;
-    overflow: hidden;
+    overflow: visible;
     flex-shrink: 0;
+    width: fit-content;
+    max-width: none;
     transition: border-color 0.15s;
 }
 
@@ -283,7 +351,7 @@ body {
 
 /* Sheet View (inside each table) */
 .sheet-view {
-    overflow: auto;
+    overflow: visible;
     background: #1a1a2e;
 }
 
@@ -298,10 +366,6 @@ body {
     border: 1px solid #0f3460;
     width: 44px;
     min-width: 44px;
-    position: sticky;
-    left: 0;
-    top: 0;
-    z-index: 3;
 }
 
 .col-header {
@@ -312,9 +376,6 @@ body {
     font-size: 11px;
     text-align: center;
     padding: 4px 2px;
-    position: sticky;
-    top: 0;
-    z-index: 2;
     user-select: none;
 }
 
@@ -353,9 +414,6 @@ body {
     padding: 2px 6px;
     width: 44px;
     min-width: 44px;
-    position: sticky;
-    left: 0;
-    z-index: 1;
     user-select: none;
 }
 

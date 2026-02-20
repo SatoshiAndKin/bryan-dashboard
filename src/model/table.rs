@@ -581,4 +581,60 @@ mod tests {
             crate::model::cell::CellValue::Number(30.0)
         );
     }
+
+    #[test]
+    fn test_formula_with_header_row() {
+        let mut t = make_table(3, 2);
+        t.header_rows = 1;
+        // Row 0 is header, rows 1-2 are data
+        t.set_cell_source(0, 0, "Name".to_string());
+        t.set_cell_source(1, 0, "Value".to_string());
+        t.set_cell_source(0, 1, "100".to_string());
+        t.set_cell_source(0, 2, "=A2".to_string()); // refs row 1 (the "100" cell)
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 2)].computed,
+            crate::model::cell::CellValue::Number(100.0)
+        );
+        // Also verify header name shows correctly
+        assert_eq!(t.col_display_name(0), "Name");
+        assert_eq!(t.col_display_name(1), "Value");
+    }
+
+    #[test]
+    fn test_block_number_formula() {
+        use crate::eth::BlockHead;
+        use crate::formula::graph::recalculate_table_full;
+
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "=BLOCK_NUMBER()".to_string());
+        t.set_cell_source(0, 1, "=BLOCK_HASH()".to_string());
+
+        let bh = BlockHead {
+            number: 12345,
+            hash: "0xdeadbeef".to_string(),
+            timestamp: 1000,
+            base_fee: Some(100),
+        };
+        recalculate_table_full(&mut t, &[], Some(&bh));
+        assert_eq!(
+            t.cells[&(0, 0)].computed,
+            crate::model::cell::CellValue::Number(12345.0)
+        );
+        assert_eq!(
+            t.cells[&(0, 1)].computed,
+            crate::model::cell::CellValue::Text("0xdeadbeef".to_string())
+        );
+    }
+
+    #[test]
+    fn test_block_formula_no_rpc() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=BLOCK_NUMBER()".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(
+            t.cells[&(0, 0)].computed,
+            crate::model::cell::CellValue::Error(_)
+        ));
+    }
 }

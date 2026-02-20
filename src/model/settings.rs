@@ -6,6 +6,8 @@ pub struct AppSettings {
     pub rpc_url: String,
     #[serde(default = "default_poll_interval")]
     pub poll_interval_secs: u32,
+    #[serde(default)]
+    pub etherscan_api_key: String,
 }
 
 fn default_poll_interval() -> u32 {
@@ -17,6 +19,7 @@ impl Default for AppSettings {
         Self {
             rpc_url: String::new(),
             poll_interval_secs: 10,
+            etherscan_api_key: String::new(),
         }
     }
 }
@@ -44,10 +47,8 @@ mod tests {
 
     #[test]
     fn test_is_websocket() {
-        let s = AppSettings {
-            rpc_url: "wss://mainnet.infura.io/ws/v3/key".into(),
-            ..Default::default()
-        };
+        let mut s = AppSettings::default();
+        s.rpc_url = "wss://mainnet.infura.io/ws/v3/key".into();
         assert!(s.is_websocket());
         assert!(!s.is_http());
         assert!(s.has_rpc());
@@ -55,10 +56,8 @@ mod tests {
 
     #[test]
     fn test_is_http() {
-        let s = AppSettings {
-            rpc_url: "https://mainnet.infura.io/v3/key".into(),
-            ..Default::default()
-        };
+        let mut s = AppSettings::default();
+        s.rpc_url = "https://mainnet.infura.io/v3/key".into();
         assert!(!s.is_websocket());
         assert!(s.is_http());
         assert!(s.has_rpc());

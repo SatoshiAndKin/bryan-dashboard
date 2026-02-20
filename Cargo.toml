@@ -35,6 +35,8 @@ web-sys = { version = "0.3", features = [
     "RequestInit",
     "Response",
     "Headers",
+    "HtmlCanvasElement",
+    "CanvasRenderingContext2d",
 ] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 wasm-bindgen-futures = "0.4"

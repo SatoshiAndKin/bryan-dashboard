@@ -12,6 +12,7 @@ pub fn SettingsPane(
 ) -> Element {
     let mut draft_url = use_signal(|| settings.rpc_url.clone());
     let mut draft_interval = use_signal(|| settings.poll_interval_secs.to_string());
+    let mut draft_etherscan_key = use_signal(|| settings.etherscan_api_key.clone());
 
     let is_ws = {
         let url = draft_url.read().trim().to_lowercase();
@@ -57,6 +58,20 @@ pub fn SettingsPane(
                     }
                 }
 
+                div { class: "settings-field",
+                    label { class: "settings-label", "Etherscan v2 API Key" }
+                    input {
+                        class: "settings-input",
+                        r#type: "text",
+                        placeholder: "Your etherscan API key...",
+                        value: "{draft_etherscan_key}",
+                        oninput: move |e| *draft_etherscan_key.write() = e.value(),
+                    }
+                    span { class: "settings-hint",
+                        "Used for ABI fetching and contract verification"
+                    }
+                }
+
                 if let Some(bh) = &block_head {
                     div { class: "settings-block-info",
                         span { class: "settings-label", "Latest block" }
@@ -98,6 +113,7 @@ pub fn SettingsPane(
                             let new_settings = AppSettings {
                                 rpc_url: draft_url.read().trim().to_string(),
                                 poll_interval_secs: interval,
+                                etherscan_api_key: draft_etherscan_key.read().trim().to_string(),
                             };
                             on_save.call(new_settings);
                         },

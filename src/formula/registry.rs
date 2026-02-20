@@ -20,6 +20,26 @@ pub const BUILTIN_FUNCTIONS: &[FuncInfo] = &[
         syntax: "AVERAGE(value1, [value2], ...)",
         description: "Alias for AVG.",
     },
+    FuncInfo {
+        name: "BLOCK_NUMBER",
+        syntax: "BLOCK_NUMBER()",
+        description: "Returns the latest Ethereum block number.",
+    },
+    FuncInfo {
+        name: "BLOCK_HASH",
+        syntax: "BLOCK_HASH()",
+        description: "Returns the latest Ethereum block hash.",
+    },
+    FuncInfo {
+        name: "BLOCK_TIMESTAMP",
+        syntax: "BLOCK_TIMESTAMP()",
+        description: "Returns the latest block timestamp (unix).",
+    },
+    FuncInfo {
+        name: "BASE_FEE",
+        syntax: "BASE_FEE()",
+        description: "Returns the latest block base fee in wei.",
+    },
 ];
 
 pub const OPERATORS: &[FuncInfo] = &[

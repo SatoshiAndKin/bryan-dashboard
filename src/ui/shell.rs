@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::eth::BlockHead;
-use crate::formula::graph::recalculate_table;
+use crate::formula::graph::{recalculate_table, recalculate_table_full};
 use crate::model::cell::col_index_to_label;
 use crate::model::settings::AppSettings;
 use crate::model::sheet::SheetId;
@@ -9,10 +9,12 @@ use crate::model::table::TableId;
 #[cfg(target_arch = "wasm32")]
 use crate::persistence::{export_workbook, import_workbook};
 use crate::persistence::{load_settings, load_workbook, save_settings, save_workbook};
+use crate::ui::buddy::BuddyCharacter;
 use crate::ui::confirm_modal::ConfirmModal;
 use crate::ui::func_sidebar::FuncSidebar;
 use crate::ui::grid::SheetView;
 use crate::ui::settings_pane::SettingsPane;
+use crate::ui::starfield::Starfield;
 use crate::ui::tabs::SheetTabsPanel;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,6 +51,7 @@ pub fn WorkbookShell() -> Element {
     let mut settings = use_signal(load_settings);
     let mut show_settings = use_signal(|| false);
     let block_head: Signal<Option<BlockHead>> = use_signal(|| None);
+    let mut last_saved: Signal<Option<String>> = use_signal(|| None);
 
     // Ethereum connection effect: reacts to settings changes
     #[cfg(target_arch = "wasm32")]
@@ -60,6 +63,20 @@ pub fn WorkbookShell() -> Element {
             spawn(async move {
                 connect_eth(s, bh).await;
             });
+        });
+    }
+
+    // Recalculate all formulas when block_head changes (for BLOCK_NUMBER etc)
+    {
+        let bh = block_head.read().clone();
+        use_effect(move || {
+            let bh_ref = bh.as_ref();
+            let mut wb = workbook.write();
+            for sheet in &mut wb.sheets {
+                for table in &mut sheet.tables {
+                    recalculate_table_full(table, &[], bh_ref);
+                }
+            }
         });
     }
 
@@ -120,7 +137,7 @@ pub fn WorkbookShell() -> Element {
                                         recalculate_table(table);
                                     }
                                 }
-                                save_workbook(&wb);
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
                             }
                         }
                     }
@@ -137,7 +154,7 @@ pub fn WorkbookShell() -> Element {
                                     recalculate_table(table);
                                 }
                             }
-                            save_workbook(&wb);
+                            save_workbook(&wb); last_saved.set(Some(now_string()));
                         }
                     }
                 } else if !ctrl {
@@ -170,7 +187,11 @@ pub fn WorkbookShell() -> Element {
                 }
             },
 
-            // Sheet tabs (top bar)
+            Starfield {}
+            BuddyCharacter {}
+
+            // Sheet tabs (top bar) + last saved timestamp
+            div { class: "tabs-row",
             SheetTabsPanel {
                 sheets: sheets.clone(),
                 active_id: active_sheet_id,
@@ -187,7 +208,7 @@ pub fn WorkbookShell() -> Element {
                     let mut wb = workbook.write();
                     let n = wb.sheets.len() + 1;
                     wb.add_sheet(format!("Sheet {}", n));
-                    save_workbook(&wb);
+                    save_workbook(&wb); last_saved.set(Some(now_string()));
                 },
                 on_delete: move |id: SheetId| {
                     let wb = workbook.read();
@@ -200,9 +221,13 @@ pub fn WorkbookShell() -> Element {
                 on_rename: move |(id, name): (SheetId, String)| {
                     let mut wb = workbook.write();
                     wb.rename_sheet(id, name);
-                    save_workbook(&wb);
+                    save_workbook(&wb); last_saved.set(Some(now_string()));
                 },
             }
+            if let Some(ts) = last_saved() {
+                span { class: "last-saved", "Saved {ts}" }
+            }
+            } // end tabs-row
 
             // Toolbar
             div { class: "sheet-toolbar",
@@ -242,7 +267,7 @@ pub fn WorkbookShell() -> Element {
                             let n = sheet.tables.len() + 1;
                             sheet.add_table(format!("Table {}", n), 6, 5);
                         }
-                        save_workbook(&wb);
+                        save_workbook(&wb); last_saved.set(Some(now_string()));
                     },
                     "+ Table"
                 }
@@ -255,7 +280,7 @@ pub fn WorkbookShell() -> Element {
                                 t.add_row();
                             }
                         }
-                        save_workbook(&wb);
+                        save_workbook(&wb); last_saved.set(Some(now_string()));
                     },
                     "+ Row"
                 }
@@ -268,7 +293,7 @@ pub fn WorkbookShell() -> Element {
                                 t.add_col();
                             }
                         }
-                        save_workbook(&wb);
+                        save_workbook(&wb); last_saved.set(Some(now_string()));
                     },
                     "+ Col"
                 }
@@ -287,7 +312,7 @@ pub fn WorkbookShell() -> Element {
                                         t.header_rows = t.header_rows.saturating_sub(1);
                                     }
                                 }
-                                save_workbook(&wb);
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
                             },
                             "-"
                         }
@@ -303,7 +328,7 @@ pub fn WorkbookShell() -> Element {
                                         }
                                     }
                                 }
-                                save_workbook(&wb);
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
                             },
                             "+"
                         }
@@ -320,7 +345,7 @@ pub fn WorkbookShell() -> Element {
                                         t.header_cols = t.header_cols.saturating_sub(1);
                                     }
                                 }
-                                save_workbook(&wb);
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
                             },
                             "-"
                         }
@@ -336,7 +361,7 @@ pub fn WorkbookShell() -> Element {
                                         }
                                     }
                                 }
-                                save_workbook(&wb);
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
                             },
                             "+"
                         }
@@ -353,7 +378,7 @@ pub fn WorkbookShell() -> Element {
                                         t.footer_rows = t.footer_rows.saturating_sub(1);
                                     }
                                 }
-                                save_workbook(&wb);
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
                             },
                             "-"
                         }
@@ -369,7 +394,7 @@ pub fn WorkbookShell() -> Element {
                                         }
                                     }
                                 }
-                                save_workbook(&wb);
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
                             },
                             "+"
                         }
@@ -398,6 +423,10 @@ pub fn WorkbookShell() -> Element {
                         "- Col"
                     }
                 }
+            }
+
+            // Formula bar — full width row
+            div { class: "formula-bar-row",
                 if let Some((col, row)) = sel_info {
                     span { class: "cell-indicator",
                         "{col_index_to_label(col)}{row + 1}"
@@ -554,7 +583,7 @@ pub fn WorkbookShell() -> Element {
                                                                 recalculate_table(table);
                                                             }
                                                         }
-                                                        save_workbook(&wb);
+                                                        save_workbook(&wb); last_saved.set(Some(now_string()));
                                                     }
                                                     let mut u = ui.write();
                                                     u.editing = None;
@@ -574,7 +603,7 @@ pub fn WorkbookShell() -> Element {
                                                         table.col_widths.insert(col, width);
                                                     }
                                                 }
-                                                save_workbook(&wb);
+                                                save_workbook(&wb); last_saved.set(Some(now_string()));
                                             },
                                             on_resize_row: move |(row, height): (u32, f32)| {
                                                 let mut wb = workbook.write();
@@ -583,7 +612,7 @@ pub fn WorkbookShell() -> Element {
                                                         table.row_heights.insert(row, height);
                                                     }
                                                 }
-                                                save_workbook(&wb);
+                                                save_workbook(&wb); last_saved.set(Some(now_string()));
                                             },
                                             on_drag_start: move |(col, row): (u32, u32)| {
                                                 ui.write().dragging = Some((tid, col, row));
@@ -599,7 +628,7 @@ pub fn WorkbookShell() -> Element {
                                                                 recalculate_table(table);
                                                             }
                                                         }
-                                                        save_workbook(&wb);
+                                                        save_workbook(&wb); last_saved.set(Some(now_string()));
                                                     }
                                                 }
                                                 let mut u = ui.write();
@@ -659,7 +688,7 @@ pub fn WorkbookShell() -> Element {
                                         let id = *id;
                                         let mut wb = workbook.write();
                                         wb.delete_sheet(id);
-                                        save_workbook(&wb);
+                                        save_workbook(&wb); last_saved.set(Some(now_string()));
                                         let mut u = ui.write();
                                         u.selected = None;
                                         u.editing = None;
@@ -671,7 +700,7 @@ pub fn WorkbookShell() -> Element {
                                         if let Some(sheet) = wb.active_sheet_mut() {
                                             sheet.delete_table(tid);
                                         }
-                                        save_workbook(&wb);
+                                        save_workbook(&wb); last_saved.set(Some(now_string()));
                                         let mut u = ui.write();
                                         if u.selected.map(|(t, _, _)| t) == Some(tid) {
                                             u.selected = None;
@@ -689,7 +718,7 @@ pub fn WorkbookShell() -> Element {
                                                 recalculate_table(table);
                                             }
                                         }
-                                        save_workbook(&wb);
+                                        save_workbook(&wb); last_saved.set(Some(now_string()));
                                         let mut u = ui.write();
                                         u.selected = None;
                                         u.editing = None;
@@ -705,7 +734,7 @@ pub fn WorkbookShell() -> Element {
                                                 recalculate_table(table);
                                             }
                                         }
-                                        save_workbook(&wb);
+                                        save_workbook(&wb); last_saved.set(Some(now_string()));
                                         let mut u = ui.write();
                                         u.selected = None;
                                         u.editing = None;
@@ -977,4 +1006,19 @@ async fn fetch_json_rpc(url: &str, body: &str) -> Result<serde_json::Value, Stri
         .ok_or("stringify failed")?;
 
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
+}
+
+fn now_string() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let d = js_sys::Date::new_0();
+        let h = d.get_hours();
+        let m = d.get_minutes();
+        let s = d.get_seconds();
+        format!("{:02}:{:02}:{:02}", h, m, s)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        "now".to_string()
+    }
 }

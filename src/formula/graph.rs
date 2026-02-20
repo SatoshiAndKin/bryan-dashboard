@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use super::ast::Expr;
 use super::eval::{evaluate, EvalContext};
 use super::parser::parse_formula;
+use crate::eth::BlockHead;
 use crate::model::cell::{CellRef, CellValue};
 use crate::model::table::TableModel;
 
@@ -39,10 +40,19 @@ fn extract_local_deps(expr: &Expr) -> Vec<CellRef> {
 }
 
 pub fn recalculate_table(table: &mut TableModel) {
-    recalculate_table_with_siblings(table, &[]);
+    recalculate_table_full(table, &[], None);
 }
 
+#[allow(dead_code)]
 pub fn recalculate_table_with_siblings(table: &mut TableModel, siblings: &[TableModel]) {
+    recalculate_table_full(table, siblings, None);
+}
+
+pub fn recalculate_table_full(
+    table: &mut TableModel,
+    siblings: &[TableModel],
+    block_head: Option<&BlockHead>,
+) {
     let mut dependencies: HashMap<(u32, u32), Vec<(u32, u32)>> = HashMap::new();
     let mut formulas: HashMap<(u32, u32), Expr> = HashMap::new();
 
@@ -78,7 +88,8 @@ pub fn recalculate_table_with_siblings(table: &mut TableModel, siblings: &[Table
         Ok(order) => {
             for key in order {
                 if let Some(expr) = formulas.get(&key) {
-                    let ctx = EvalContext::with_siblings(table, siblings);
+                    let mut ctx = EvalContext::with_siblings(table, siblings);
+                    ctx.block_head = block_head;
                     let val = evaluate(expr, &ctx);
                     if let Some(cell) = table.cells.get_mut(&key) {
                         cell.computed = val;

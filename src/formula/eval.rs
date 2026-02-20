@@ -1,4 +1,5 @@
 use super::ast::{BinOp, Expr};
+use crate::eth::BlockHead;
 use crate::model::cell::{CellRef, CellValue};
 use crate::model::table::TableModel;
 
@@ -10,6 +11,8 @@ pub struct EvalContext<'a> {
     pub siblings: &'a [TableModel],
     /// All (sheet_name, table) pairs across all sheets (for SHEET::TABLE::A1)
     pub all_tables: Vec<(&'a str, &'a TableModel)>,
+    /// Latest block head from Ethereum RPC (if connected)
+    pub block_head: Option<&'a BlockHead>,
 }
 
 impl<'a> EvalContext<'a> {
@@ -19,6 +22,7 @@ impl<'a> EvalContext<'a> {
             current: table,
             siblings: &[],
             all_tables: Vec::new(),
+            block_head: None,
         }
     }
 
@@ -27,6 +31,7 @@ impl<'a> EvalContext<'a> {
             current: table,
             siblings,
             all_tables: Vec::new(),
+            block_head: None,
         }
     }
 
@@ -40,6 +45,7 @@ impl<'a> EvalContext<'a> {
             current: table,
             siblings,
             all_tables,
+            block_head: None,
         }
     }
 
@@ -174,6 +180,37 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
                 CellValue::Error("#DIV/0!".to_string())
             } else {
                 CellValue::Number(sum / count as f64)
+            }
+        }
+        "BLOCK_NUMBER" | "BLOCK" => {
+            if let Some(bh) = ctx.block_head {
+                CellValue::Number(bh.number as f64)
+            } else {
+                CellValue::Error("#NO_RPC!".to_string())
+            }
+        }
+        "BLOCK_HASH" => {
+            if let Some(bh) = ctx.block_head {
+                CellValue::Text(bh.hash.clone())
+            } else {
+                CellValue::Error("#NO_RPC!".to_string())
+            }
+        }
+        "BLOCK_TIMESTAMP" => {
+            if let Some(bh) = ctx.block_head {
+                CellValue::Number(bh.timestamp as f64)
+            } else {
+                CellValue::Error("#NO_RPC!".to_string())
+            }
+        }
+        "BLOCK_BASE_FEE" | "BASE_FEE" => {
+            if let Some(bh) = ctx.block_head {
+                match bh.base_fee {
+                    Some(fee) => CellValue::Number(fee as f64),
+                    None => CellValue::Empty,
+                }
+            } else {
+                CellValue::Error("#NO_RPC!".to_string())
             }
         }
         _ => CellValue::Error(format!("#NAME? {}", name)),
