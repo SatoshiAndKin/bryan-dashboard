@@ -615,6 +615,7 @@ mod tests {
             hash: "0xdeadbeef".to_string(),
             timestamp: 1000,
             base_fee: Some(100),
+            ..Default::default()
         };
         recalculate_table_full(&mut t, &[], Some(&bh));
         assert_eq!(

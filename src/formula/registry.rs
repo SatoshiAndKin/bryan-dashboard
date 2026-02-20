@@ -22,23 +22,24 @@ pub const BUILTIN_FUNCTIONS: &[FuncInfo] = &[
     },
     FuncInfo {
         name: "BLOCK_NUMBER",
-        syntax: "BLOCK_NUMBER()",
-        description: "Returns the latest Ethereum block number.",
+        syntax: "BLOCK_NUMBER([chain_id])",
+        description: "Returns the latest Ethereum block number. Optional chain_id to verify chain.",
     },
     FuncInfo {
         name: "BLOCK_HASH",
-        syntax: "BLOCK_HASH()",
-        description: "Returns the latest Ethereum block hash.",
+        syntax: "BLOCK_HASH([chain_id])",
+        description: "Returns the latest Ethereum block hash. Optional chain_id to verify chain.",
     },
     FuncInfo {
         name: "BLOCK_TIMESTAMP",
-        syntax: "BLOCK_TIMESTAMP()",
-        description: "Returns the latest block timestamp (unix).",
+        syntax: "BLOCK_TIMESTAMP([chain_id])",
+        description:
+            "Returns the latest block timestamp (unix). Optional chain_id to verify chain.",
     },
     FuncInfo {
         name: "BASE_FEE",
-        syntax: "BASE_FEE()",
-        description: "Returns the latest block base fee in wei.",
+        syntax: "BASE_FEE([chain_id])",
+        description: "Returns the latest block base fee in wei. Optional chain_id to verify chain.",
     },
     FuncInfo {
         name: "ETH_BALANCE",

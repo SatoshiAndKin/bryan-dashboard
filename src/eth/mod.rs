@@ -8,6 +8,8 @@ pub struct BlockHead {
     pub hash: String,
     pub timestamp: u64,
     pub base_fee: Option<u64>,
+    #[serde(default)]
+    pub chain_id: u64,
 }
 
 #[allow(dead_code)]
@@ -39,6 +41,7 @@ pub fn parse_block_head(val: &serde_json::Value) -> Option<BlockHead> {
         hash,
         timestamp,
         base_fee,
+        chain_id: 0,
     })
 }
 

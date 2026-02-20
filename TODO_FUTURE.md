@@ -13,3 +13,10 @@
 - [ ] import/export should be a lot more advanced. i want to be able to export just pieces. and importing should merge things. doing this well
 
 - [ ] window.ethereum works for using a wallet provider, but it is fragile. there is a multi-provider ERC that we should be using instead. i really dislike javascript, so we should keep as much of this logic in our rust/alloy code as possible
+
+- [ ] have an ai chatbot table that you can do whatever with. have LLM(query) and it puts a number into the cell. this will need smart caching. maybe a custom polling interval for each cell.
+
+- [ ] i probably need some MCP servers on factory.ai. i think claude has some memory stuff that it saves in the repo that keeps it from forgetting so much. i want to teach it best practices and have it actually remember. so my "rust engineer" skill will just use dioxus/alloy/serde/tokio/tracing/dotenvy/envy without me having to tell it. i feel like i need a library of best practices for everything. then tell the agent "go through the library and build a skill relevant to the task at hand. then do the task"
+    - like, right now i have AGENTS.md that describes a single agent that knows dioxus. but i need one that knows alloy, too. and i think they should be one that knows multiple topics. i've seen lots of people makign a bunch of hyper specialized agents. but i find most of the code i write to be gluing multiple projects together. you need cross domain knowledge for that.
+
+- [ ] whenever the block updates, all the relevant cells need to update. how can we leverage dioxus signals for this?

@@ -230,28 +230,52 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
             }
         }
         "BLOCK_NUMBER" | "BLOCK" => {
+            let requested_chain = get_optional_chain_id(args, ctx);
             if let Some(bh) = ctx.block_head {
+                if let Some(chain_id) = requested_chain {
+                    if bh.chain_id != 0 && bh.chain_id != chain_id {
+                        return CellValue::Error(format!("#CHAIN! connected to {}", bh.chain_id));
+                    }
+                }
                 CellValue::Number(bh.number as f64)
             } else {
                 CellValue::Error("#NO_RPC!".to_string())
             }
         }
         "BLOCK_HASH" => {
+            let requested_chain = get_optional_chain_id(args, ctx);
             if let Some(bh) = ctx.block_head {
+                if let Some(chain_id) = requested_chain {
+                    if bh.chain_id != 0 && bh.chain_id != chain_id {
+                        return CellValue::Error(format!("#CHAIN! connected to {}", bh.chain_id));
+                    }
+                }
                 CellValue::Text(bh.hash.clone())
             } else {
                 CellValue::Error("#NO_RPC!".to_string())
             }
         }
         "BLOCK_TIMESTAMP" => {
+            let requested_chain = get_optional_chain_id(args, ctx);
             if let Some(bh) = ctx.block_head {
+                if let Some(chain_id) = requested_chain {
+                    if bh.chain_id != 0 && bh.chain_id != chain_id {
+                        return CellValue::Error(format!("#CHAIN! connected to {}", bh.chain_id));
+                    }
+                }
                 CellValue::Number(bh.timestamp as f64)
             } else {
                 CellValue::Error("#NO_RPC!".to_string())
             }
         }
         "BLOCK_BASE_FEE" | "BASE_FEE" => {
+            let requested_chain = get_optional_chain_id(args, ctx);
             if let Some(bh) = ctx.block_head {
+                if let Some(chain_id) = requested_chain {
+                    if bh.chain_id != 0 && bh.chain_id != chain_id {
+                        return CellValue::Error(format!("#CHAIN! connected to {}", bh.chain_id));
+                    }
+                }
                 match bh.base_fee {
                     Some(fee) => CellValue::Number(fee as f64),
                     None => CellValue::Empty,
@@ -298,6 +322,18 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
             CellValue::Text("#LOADING...".to_string())
         }
         _ => CellValue::Error(format!("#NAME? {}", name)),
+    }
+}
+
+/// Extract an optional chain_id from the first argument of a block function.
+fn get_optional_chain_id(args: &[Expr], ctx: &EvalContext) -> Option<u64> {
+    if args.is_empty() {
+        return None;
+    }
+    let val = evaluate(&args[0], ctx);
+    match val {
+        CellValue::Number(n) if n > 0.0 => Some(n as u64),
+        _ => None,
     }
 }
 
@@ -463,6 +499,7 @@ mod tests {
             hash: "0xabc".to_string(),
             timestamp: 1700000000,
             base_fee: Some(50),
+            ..Default::default()
         };
         let mut t = make_table(3, 1);
         t.set_cell_source(0, 0, "=BLOCK_TIMESTAMP()".to_string());
@@ -689,6 +726,7 @@ mod tests {
             hash: "0xabc".to_string(),
             timestamp: 1000,
             base_fee: None,
+            ..Default::default()
         };
         let mut t = make_table(1, 1);
         t.set_cell_source(0, 0, "=BASE_FEE()".to_string());

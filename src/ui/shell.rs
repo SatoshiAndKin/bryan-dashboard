@@ -72,7 +72,7 @@ pub fn WorkbookShell() -> Element {
     {
         let bh = block_head.read().clone();
         let cache = balance_cache.read().clone();
-        let rpc_url = settings.read().rpc_url.clone();
+        let rpc_url = settings.read().effective_rpc_url().unwrap_or_default();
         use_effect(move || {
             let bh_ref = bh.as_ref();
             let pending = std::cell::RefCell::new(Vec::<String>::new());
@@ -909,10 +909,14 @@ async fn connect_eth(settings: AppSettings, mut block_head: Signal<Option<BlockH
         return;
     }
 
+    let url = match settings.effective_rpc_url() {
+        Some(u) => u,
+        None => return,
+    };
     if settings.is_websocket() {
-        connect_eth_ws(&settings.rpc_url, block_head).await;
+        connect_eth_ws(&url, block_head).await;
     } else {
-        poll_eth_http(&settings.rpc_url, settings.poll_interval_secs, block_head).await;
+        poll_eth_http(&url, settings.poll_interval_secs, block_head).await;
     }
 }
 

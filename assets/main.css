@@ -806,6 +806,37 @@ body {
     font-size: 11px;
 }
 
+/* RPC Entry */
+.rpc-entry {
+    background: #0d1b2a;
+    border: 1px solid #0f3460;
+    border-radius: 5px;
+    padding: 8px;
+    margin-bottom: 8px;
+}
+
+.rpc-entry-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.rpc-entry-row .settings-input.short {
+    width: 90px;
+    flex-shrink: 0;
+}
+
+.rpc-entry-row .settings-input {
+    flex: 1;
+}
+
+.settings-field-inline {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
 .settings-actions {
     display: flex;
     justify-content: flex-end;
