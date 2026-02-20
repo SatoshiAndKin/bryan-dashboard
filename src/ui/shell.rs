@@ -654,7 +654,8 @@ pub fn WorkbookShell() -> Element {
                                 save_workbook(&wb); last_saved.set(Some(now_string()));
                             }
                         },
-                        "B"
+                        title: "Bold",
+                        span { style: "font-weight:bold;", "B" }
                     }
                     button {
                         class: if sel_format.as_ref().map(|f| f.italic).unwrap_or(false) { "toolbar-btn active" } else { "toolbar-btn" },
@@ -671,7 +672,8 @@ pub fn WorkbookShell() -> Element {
                                 save_workbook(&wb); last_saved.set(Some(now_string()));
                             }
                         },
-                        "I"
+                        title: "Italic",
+                        span { style: "font-style:italic;", "I" }
                     }
                     span { class: "toolbar-separator" }
                     button {
@@ -689,7 +691,8 @@ pub fn WorkbookShell() -> Element {
                                 save_workbook(&wb); last_saved.set(Some(now_string()));
                             }
                         },
-                        "L"
+                        title: "Align Left",
+                        span { class: "icon-align-left" }
                     }
                     button {
                         class: if sel_format.as_ref().map(|f| f.align == TextAlign::Center).unwrap_or(false) { "toolbar-btn active" } else { "toolbar-btn" },
@@ -706,7 +709,8 @@ pub fn WorkbookShell() -> Element {
                                 save_workbook(&wb); last_saved.set(Some(now_string()));
                             }
                         },
-                        "C"
+                        title: "Align Center",
+                        span { class: "icon-align-center" }
                     }
                     button {
                         class: if sel_format.as_ref().map(|f| f.align == TextAlign::Right).unwrap_or(false) { "toolbar-btn active" } else { "toolbar-btn" },
@@ -723,7 +727,8 @@ pub fn WorkbookShell() -> Element {
                                 save_workbook(&wb); last_saved.set(Some(now_string()));
                             }
                         },
-                        "R"
+                        title: "Align Right",
+                        span { class: "icon-align-right" }
                     }
                     span { class: "toolbar-separator" }
                     button {
@@ -741,6 +746,7 @@ pub fn WorkbookShell() -> Element {
                                 save_workbook(&wb); last_saved.set(Some(now_string()));
                             }
                         },
+                        title: "Currency",
                         "$"
                     }
                     button {
@@ -758,6 +764,7 @@ pub fn WorkbookShell() -> Element {
                                 save_workbook(&wb); last_saved.set(Some(now_string()));
                             }
                         },
+                        title: "Percent",
                         "%"
                     }
                     button {
@@ -778,6 +785,7 @@ pub fn WorkbookShell() -> Element {
                                 save_workbook(&wb); last_saved.set(Some(now_string()));
                             }
                         },
+                        title: "Fixed Decimals",
                         ".00"
                     }
                 }
@@ -829,6 +837,7 @@ pub fn WorkbookShell() -> Element {
             }
 
             // Canvas with tables from active sheet
+            div { class: "sheet-content-wrapper",
             div { class: "sheet-content",
                 div { class: "canvas-area",
                     if let Some(sheet) = &active_sheet {
@@ -1118,14 +1127,15 @@ pub fn WorkbookShell() -> Element {
                         }
                     }
                 }
-                if show_func_sidebar {
-                    FuncSidebar {
-                        on_insert: move |text: String| {
-                            ui.write().edit_buffer.push_str(&text);
-                        },
-                    }
+            }
+            if show_func_sidebar {
+                FuncSidebar {
+                    on_insert: move |text: String| {
+                        ui.write().edit_buffer.push_str(&text);
+                    },
                 }
             }
+            } // end sheet-content-wrapper
 
             // Settings pane
             if show_settings() {

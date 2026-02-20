@@ -124,7 +124,7 @@ pub fn SettingsPane(
                                     if let Some(bh) = &bh {
                                         div { class: "rpc-block-info",
                                             span { "Block {bh.number}" }
-                                            span { class: "mono", "{bh.hash.get(..18).unwrap_or(&bh.hash)}..." }
+                                            span { class: "mono", "{bh.hash}" }
                                             if bh.timestamp > 0 {
                                                 {
                                                     let now = (js_sys::Date::now() / 1000.0) as u64;

@@ -6,27 +6,20 @@ type AnimCallback =
 
 #[component]
 pub fn BuddyCharacter() -> Element {
-    let pos_x = use_signal(|| 60.0_f64);
-    let pos_y = use_signal(|| 120.0_f64);
+    let pos = use_signal(|| (60.0_f64, 120.0_f64));
     #[allow(unused_variables)]
-    let mouse_x = use_signal(|| -1000.0_f64);
+    let mouse = use_signal(|| (-1000.0_f64, -1000.0_f64));
     #[allow(unused_variables)]
-    let mouse_y = use_signal(|| -1000.0_f64);
-    #[allow(unused_variables)]
-    let vel_x = use_signal(|| 0.3_f64);
-    #[allow(unused_variables)]
-    let vel_y = use_signal(|| 0.2_f64);
+    let vel = use_signal(|| (0.3_f64, 0.2_f64));
 
-    // Track mouse globally
     #[cfg(target_arch = "wasm32")]
     {
         use_effect(move || {
-            start_buddy_loop(pos_x, pos_y, mouse_x, mouse_y, vel_x, vel_y);
+            start_buddy_loop(pos, mouse, vel);
         });
     }
 
-    let x = *pos_x.read();
-    let y = *pos_y.read();
+    let (x, y) = *pos.read();
 
     rsx! {
         div {
@@ -40,12 +33,9 @@ pub fn BuddyCharacter() -> Element {
 
 #[cfg(target_arch = "wasm32")]
 fn start_buddy_loop(
-    mut pos_x: Signal<f64>,
-    mut pos_y: Signal<f64>,
-    mut mouse_x: Signal<f64>,
-    mut mouse_y: Signal<f64>,
-    mut vel_x: Signal<f64>,
-    mut vel_y: Signal<f64>,
+    mut pos: Signal<(f64, f64)>,
+    mut mouse: Signal<(f64, f64)>,
+    mut vel: Signal<(f64, f64)>,
 ) {
     use wasm_bindgen::prelude::Closure;
     use wasm_bindgen::JsCast;
@@ -55,18 +45,15 @@ fn start_buddy_loop(
         None => return,
     };
 
-    // Mouse tracking
     let onmousemove =
         Closure::<dyn FnMut(web_sys::MouseEvent)>::new(move |e: web_sys::MouseEvent| {
-            mouse_x.set(e.client_x() as f64);
-            mouse_y.set(e.client_y() as f64);
+            mouse.set((e.client_x() as f64, e.client_y() as f64));
         });
     window
         .add_event_listener_with_callback("mousemove", onmousemove.as_ref().unchecked_ref())
         .ok();
     onmousemove.forget();
 
-    // Animation loop
     let cb: AnimCallback = std::rc::Rc::new(std::cell::RefCell::new(None));
     let cb_clone = cb.clone();
 
@@ -80,14 +67,11 @@ fn start_buddy_loop(
             .and_then(|v| v.as_f64())
             .unwrap_or(600.0);
 
-        let mut x = *pos_x.read();
-        let mut y = *pos_y.read();
-        let mx = *mouse_x.read();
-        let my = *mouse_y.read();
-        let mut vx = *vel_x.read();
-        let mut vy = *vel_y.read();
+        let (mut x, mut y) = *pos.read();
+        let (mx, my) = *mouse.read();
+        let (mut vx, mut vy) = *vel.read();
 
-        // Flee from cursor if too close
+        // Flee from cursor
         let dx = x - mx;
         let dy = y - my;
         let dist = (dx * dx + dy * dy).sqrt();
@@ -98,7 +82,7 @@ fn start_buddy_loop(
             vy += (dy / dist) * force;
         }
 
-        // Wander gently
+        // Wander
         let mut seed = (x * 1000.0 + y * 7.0) as u64;
         seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
         let r = (seed as f64 / u64::MAX as f64) - 0.5;
@@ -107,11 +91,9 @@ fn start_buddy_loop(
         let r2 = (seed as f64 / u64::MAX as f64) - 0.5;
         vy += r2 * 0.05;
 
-        // Damping
         vx *= 0.98;
         vy *= 0.98;
 
-        // Clamp speed
         let speed = (vx * vx + vy * vy).sqrt();
         let max_speed = 3.0;
         if speed > max_speed {
@@ -122,7 +104,6 @@ fn start_buddy_loop(
         x += vx;
         y += vy;
 
-        // Bounce off edges — keep below the header (tabs + toolbar ~70px)
         let margin = 40.0;
         let top_margin = 80.0;
         if x < margin {
@@ -142,10 +123,8 @@ fn start_buddy_loop(
             vy = -vy.abs();
         }
 
-        pos_x.set(x);
-        pos_y.set(y);
-        vel_x.set(vx);
-        vel_y.set(vy);
+        pos.set((x, y));
+        vel.set((vx, vy));
 
         if let Some(win) = web_sys::window() {
             if let Some(ref closure) = *cb_clone.borrow() {

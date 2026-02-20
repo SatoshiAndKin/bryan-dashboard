@@ -166,6 +166,39 @@ body {
     color: #d88;
 }
 
+.icon-align-left,
+.icon-align-center,
+.icon-align-right {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 14px;
+    height: 12px;
+    justify-content: center;
+}
+
+.icon-align-left::before,
+.icon-align-left::after,
+.icon-align-center::before,
+.icon-align-center::after,
+.icon-align-right::before,
+.icon-align-right::after {
+    content: '';
+    display: block;
+    height: 2px;
+    background: currentColor;
+    border-radius: 1px;
+}
+
+.icon-align-left::before { width: 100%; }
+.icon-align-left::after { width: 65%; }
+
+.icon-align-center::before { width: 100%; margin: 0 auto; }
+.icon-align-center::after { width: 65%; margin: 0 auto; }
+
+.icon-align-right::before { width: 100%; }
+.icon-align-right::after { width: 65%; margin-left: auto; }
+
 .toolbar-separator {
     width: 1px;
     height: 20px;
@@ -288,13 +321,19 @@ body {
     border-bottom-color: #4ac9d9;
 }
 
-/* Sheet Content (canvas + sidebar) */
-.sheet-content {
+/* Sheet Content wrapper (scrollable content + fixed sidebar) */
+.sheet-content-wrapper {
     display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+}
+
+.sheet-content {
     flex: 1;
     overflow: auto;
     position: relative;
-    z-index: 1;
 }
 
 /* Canvas area — all tables rendered here, Numbers-style */
