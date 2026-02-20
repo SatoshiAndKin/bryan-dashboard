@@ -48,10 +48,7 @@ pub fn load_settings() -> AppSettings {
     {
         if let Some(json) = read_local_storage(SETTINGS_KEY) {
             match serde_json::from_str::<AppSettings>(&json) {
-                Ok(mut s) => {
-                    s.migrate_legacy_rpc();
-                    return s;
-                }
+                Ok(s) => return s,
                 Err(e) => {
                     web_sys::console::error_1(
                         &format!("Failed to deserialize settings: {e}").into(),
