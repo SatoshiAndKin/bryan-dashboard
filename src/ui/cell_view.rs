@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
 
+use crate::model::cell::col_index_to_label;
+
 #[component]
 pub fn CellView(
     col: u32,
@@ -45,11 +47,22 @@ pub fn CellView(
     let is_error = display_value.starts_with('#');
 
     let base_style = format!("width:{width}px;min-width:{width}px;height:{height}px;{cell_style}");
+    let cell_label = format!("{}{}", col_index_to_label(col), row + 1);
+    let aria_label = if display_value.is_empty() {
+        format!("Cell {cell_label}, empty")
+    } else {
+        format!("Cell {cell_label}, {display_value}")
+    };
 
     rsx! {
         td {
             class,
             style: "{base_style}",
+            role: "gridcell",
+            "aria-label": "{aria_label}",
+            "aria-selected": if is_selected { "true" } else { "false" },
+            "aria-readonly": if is_header { "true" } else { "false" },
+            tabindex: if is_selected { "0" } else { "-1" },
             draggable: if has_content && !is_editing { "true" } else { "false" },
             onclick: move |e| {
                 if !is_editing {

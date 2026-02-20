@@ -34,10 +34,13 @@ pub fn SheetView(
                     on_cancel_edit.call(());
                 }
             },
-            table { class: "grid-table",
+            table {
+                class: "grid-table",
+                role: "grid",
+                "aria-label": "{table.name}",
                 thead {
-                    tr {
-                        th { class: "corner-cell" }
+                    tr { role: "row",
+                        th { class: "corner-cell", role: "columnheader" }
                         for c in 0..table.cols {
                             {
                                 let header_name = table.col_display_name(c);
@@ -46,6 +49,7 @@ pub fn SheetView(
                                 rsx! {
                                     th {
                                         class: if is_custom { "col-header named clickable" } else { "col-header clickable" },
+                                        role: "columnheader",
                                         style: "width: {table.col_width(c)}px; min-width: {table.col_width(c)}px;",
                                         onclick: move |_| on_select_col.call(c),
                                         if is_custom {
@@ -64,6 +68,7 @@ pub fn SheetView(
                     for r in 0..table.rows {
                         tr {
                             key: "row-{r}",
+                            role: "row",
                             {
                                 let row_name = table.row_display_name(r);
                                 let fallback = (r + 1).to_string();
@@ -71,6 +76,7 @@ pub fn SheetView(
                                 rsx! {
                                     td {
                                         class: if is_custom { "row-header named clickable" } else { "row-header clickable" },
+                                        role: "rowheader",
                                         style: "height: {table.row_height(r)}px;",
                                         onclick: move |_| on_select_row.call(r),
                                         if is_custom {

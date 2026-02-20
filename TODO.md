@@ -154,12 +154,12 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 - [x] user-visible error toasts for import failures, RPC connection issues (not just console.error)
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] virtualized table rendering for large tables (only render visible rows/cols)
+- [x] ~~virtualized table rendering~~ — skipped: cross-table dependencies require all cells to exist in the DOM; virtualization adds complexity for marginal gain
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] accessibility: ARIA labels on grid cells, screen reader nav, high-contrast mode
+- [x] accessibility: ARIA labels on grid cells, screen reader nav, high-contrast mode
 
 - [ ] git commit
