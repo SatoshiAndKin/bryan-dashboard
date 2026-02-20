@@ -40,6 +40,9 @@ pub fn col_index_to_label(mut col: u32) -> String {
 }
 
 pub fn parse_col_label(s: &str) -> Option<u32> {
+    if s.is_empty() {
+        return None;
+    }
     let mut col: u32 = 0;
     for (i, c) in s.chars().enumerate() {
         if !c.is_ascii_uppercase() {
@@ -108,5 +111,89 @@ impl Default for CellModel {
             source: String::new(),
             computed: CellValue::Empty,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_col_index_to_label() {
+        assert_eq!(col_index_to_label(0), "A");
+        assert_eq!(col_index_to_label(1), "B");
+        assert_eq!(col_index_to_label(25), "Z");
+        assert_eq!(col_index_to_label(26), "AA");
+        assert_eq!(col_index_to_label(27), "AB");
+        assert_eq!(col_index_to_label(51), "AZ");
+        assert_eq!(col_index_to_label(52), "BA");
+        assert_eq!(col_index_to_label(701), "ZZ");
+        assert_eq!(col_index_to_label(702), "AAA");
+    }
+
+    #[test]
+    fn test_parse_col_label() {
+        assert_eq!(parse_col_label("A"), Some(0));
+        assert_eq!(parse_col_label("B"), Some(1));
+        assert_eq!(parse_col_label("Z"), Some(25));
+        assert_eq!(parse_col_label("AA"), Some(26));
+        assert_eq!(parse_col_label("AB"), Some(27));
+        assert_eq!(parse_col_label("AZ"), Some(51));
+        assert_eq!(parse_col_label("BA"), Some(52));
+        assert_eq!(parse_col_label("ZZ"), Some(701));
+        assert_eq!(parse_col_label("AAA"), Some(702));
+        assert_eq!(parse_col_label(""), None);
+        assert_eq!(parse_col_label("a"), None); // lowercase
+        assert_eq!(parse_col_label("1"), None);
+    }
+
+    #[test]
+    fn test_col_label_roundtrip() {
+        for i in 0..1000 {
+            let label = col_index_to_label(i);
+            assert_eq!(
+                parse_col_label(&label),
+                Some(i),
+                "Failed roundtrip for {}",
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_cell_ref() {
+        let r = parse_cell_ref("A1").unwrap();
+        assert_eq!(r.col, 0);
+        assert_eq!(r.row, 0);
+
+        let r = parse_cell_ref("B3").unwrap();
+        assert_eq!(r.col, 1);
+        assert_eq!(r.row, 2);
+
+        let r = parse_cell_ref("AA10").unwrap();
+        assert_eq!(r.col, 26);
+        assert_eq!(r.row, 9);
+
+        assert!(parse_cell_ref("A0").is_none()); // row 0 invalid
+        assert!(parse_cell_ref("1A").is_none()); // starts with digit
+        assert!(parse_cell_ref("").is_none());
+        assert!(parse_cell_ref("A").is_none()); // no row number
+    }
+
+    #[test]
+    fn test_cell_ref_label() {
+        let r = CellRef::new(0, 0);
+        assert_eq!(r.label(), "A1");
+        let r = CellRef::new(27, 9);
+        assert_eq!(r.label(), "AB10");
+    }
+
+    #[test]
+    fn test_cell_value_display() {
+        assert_eq!(CellValue::Empty.to_string(), "");
+        assert_eq!(CellValue::Number(42.0).to_string(), "42");
+        assert_eq!(CellValue::Number(3.14).to_string(), "3.140000");
+        assert_eq!(CellValue::Text("hello".into()).to_string(), "hello");
+        assert_eq!(CellValue::Error("#REF!".into()).to_string(), "#REF!");
     }
 }

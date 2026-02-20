@@ -13,6 +13,7 @@ pub struct EvalContext<'a> {
 }
 
 impl<'a> EvalContext<'a> {
+    #[allow(dead_code)]
     pub fn single(table: &'a TableModel) -> Self {
         Self {
             current: table,
@@ -29,6 +30,7 @@ impl<'a> EvalContext<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn full(
         table: &'a TableModel,
         siblings: &'a [TableModel],

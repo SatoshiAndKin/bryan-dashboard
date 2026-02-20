@@ -47,6 +47,7 @@ impl Sheet {
         self.tables.iter_mut().find(|t| t.id == id)
     }
 
+    #[allow(dead_code)]
     pub fn table_by_name(&self, name: &str) -> Option<&TableModel> {
         self.tables.iter().find(|t| t.name == name)
     }
@@ -84,6 +85,7 @@ impl Sheet {
         }
     }
 
+    #[allow(dead_code)]
     pub fn rename_table(&mut self, id: TableId, name: String) {
         let existing: Vec<&str> = self
             .tables

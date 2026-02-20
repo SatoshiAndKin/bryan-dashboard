@@ -249,3 +249,108 @@ pub fn parse_formula(source: &str) -> Result<Expr, String> {
     }
     Ok(expr)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::cell::CellRef;
+
+    #[test]
+    fn test_parse_number() {
+        let e = parse_formula("=42").unwrap();
+        assert_eq!(e, Expr::Number(42.0));
+    }
+
+    #[test]
+    fn test_parse_cell_ref() {
+        let e = parse_formula("=A1").unwrap();
+        assert_eq!(e, Expr::CellRef(CellRef::new(0, 0)));
+    }
+
+    #[test]
+    fn test_parse_arithmetic() {
+        let e = parse_formula("=1+2*3").unwrap();
+        // Should be 1 + (2*3) due to precedence
+        assert!(matches!(e, Expr::BinOp(_, BinOp::Add, _)));
+    }
+
+    #[test]
+    fn test_parse_range() {
+        let e = parse_formula("=A1:B5").unwrap();
+        assert!(matches!(e, Expr::Range(_, _)));
+    }
+
+    #[test]
+    fn test_parse_function() {
+        let e = parse_formula("=SUM(A1:B5)").unwrap();
+        assert!(matches!(e, Expr::FuncCall(ref name, _) if name == "SUM"));
+    }
+
+    #[test]
+    fn test_parse_cross_table_ref() {
+        let e = parse_formula("=Table 1::A1").unwrap();
+        match e {
+            Expr::CrossTableRef(sheet, table, r) => {
+                assert!(sheet.is_none());
+                assert_eq!(table, "Table 1");
+                assert_eq!(r, CellRef::new(0, 0));
+            }
+            _ => panic!("Expected CrossTableRef, got {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_parse_cross_sheet_ref() {
+        let e = parse_formula("=Sheet 1::Table 1::A1").unwrap();
+        match e {
+            Expr::CrossTableRef(sheet, table, r) => {
+                assert_eq!(sheet, Some("Sheet 1".to_string()));
+                assert_eq!(table, "Table 1");
+                assert_eq!(r, CellRef::new(0, 0));
+            }
+            _ => panic!("Expected CrossTableRef, got {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_parse_cross_table_range() {
+        let e = parse_formula("=Table 1::A1:B5").unwrap();
+        match e {
+            Expr::CrossTableRange(sheet, table, start, end) => {
+                assert!(sheet.is_none());
+                assert_eq!(table, "Table 1");
+                assert_eq!(start, CellRef::new(0, 0));
+                assert_eq!(end, CellRef::new(1, 4));
+            }
+            _ => panic!("Expected CrossTableRange, got {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_parse_unary_neg() {
+        let e = parse_formula("=-5").unwrap();
+        assert!(matches!(e, Expr::UnaryNeg(_)));
+    }
+
+    #[test]
+    fn test_parse_parens() {
+        let e = parse_formula("=(1+2)*3").unwrap();
+        assert!(matches!(e, Expr::BinOp(_, BinOp::Mul, _)));
+    }
+
+    #[test]
+    fn test_parse_error_on_junk() {
+        assert!(parse_formula("=1+").is_err());
+    }
+
+    #[test]
+    fn test_parse_multi_arg_function() {
+        let e = parse_formula("=SUM(A1, B2, C3)").unwrap();
+        if let Expr::FuncCall(name, args) = e {
+            assert_eq!(name, "SUM");
+            assert_eq!(args.len(), 3);
+        } else {
+            panic!("Expected FuncCall");
+        }
+    }
+}

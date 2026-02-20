@@ -51,6 +51,7 @@ impl Default for WorkbookState {
 }
 
 impl WorkbookState {
+    #[allow(dead_code)]
     /// Migrate v1 (flat tables) to v2 (sheets containing tables)
     pub fn migrate_if_needed(&mut self) {
         if self.version < 2 && !self.tables.is_empty() {
@@ -91,6 +92,7 @@ impl WorkbookState {
         self.sheets.iter().find(|s| s.id == id)
     }
 
+    #[allow(dead_code)]
     pub fn sheet_by_id_mut(&mut self, id: SheetId) -> Option<&mut Sheet> {
         self.sheets.iter_mut().find(|s| s.id == id)
     }
@@ -132,6 +134,7 @@ impl WorkbookState {
         }
     }
 
+    #[allow(dead_code)]
     /// Find a table by name across all sheets in the active sheet first, then others
     pub fn find_table_by_name(&self, name: &str) -> Option<&TableModel> {
         // Search active sheet first
@@ -147,5 +150,67 @@ impl WorkbookState {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unique_name_no_conflict() {
+        assert_eq!(unique_name("Sheet 1", &[]), "Sheet 1");
+        assert_eq!(unique_name("Sheet 1", &["Sheet 2"]), "Sheet 1");
+    }
+
+    #[test]
+    fn test_unique_name_with_conflict() {
+        assert_eq!(unique_name("Sheet 1", &["Sheet 1"]), "Sheet 1 (2)");
+        assert_eq!(
+            unique_name("Sheet 1", &["Sheet 1", "Sheet 1 (2)"]),
+            "Sheet 1 (3)"
+        );
+    }
+
+    #[test]
+    fn test_unique_name_case_insensitive() {
+        assert_eq!(unique_name("sheet 1", &["Sheet 1"]), "sheet 1 (2)");
+    }
+
+    #[test]
+    fn test_add_sheet_unique_names() {
+        let mut wb = WorkbookState::default();
+        wb.add_sheet("Sheet 1".to_string()); // conflict with existing
+        assert_eq!(wb.sheets.len(), 2);
+        assert_eq!(wb.sheets[1].name, "Sheet 1 (2)");
+    }
+
+    #[test]
+    fn test_delete_sheet_cannot_delete_last() {
+        let mut wb = WorkbookState::default();
+        let id = wb.sheets[0].id;
+        wb.delete_sheet(id);
+        assert_eq!(wb.sheets.len(), 1); // still 1
+    }
+
+    #[test]
+    fn test_delete_sheet_switches_active() {
+        let mut wb = WorkbookState::default();
+        let id1 = wb.sheets[0].id;
+        let id2 = wb.add_sheet("Sheet 2".to_string());
+        wb.active_sheet_id = id1;
+        wb.delete_sheet(id1);
+        assert_eq!(wb.active_sheet_id, id2);
+    }
+
+    #[test]
+    fn test_rename_sheet_unique() {
+        let mut wb = WorkbookState::default();
+        let id2 = wb.add_sheet("Sheet 2".to_string());
+        wb.rename_sheet(id2, "Sheet 1".to_string()); // conflict
+        assert_eq!(
+            wb.sheets.iter().find(|s| s.id == id2).unwrap().name,
+            "Sheet 1 (2)"
+        );
     }
 }

@@ -175,6 +175,21 @@ impl TableModel {
         }
         self.row_names = new_names;
 
+        // Adjust header/footer counts
+        if row < self.header_rows && self.header_rows > 0 {
+            self.header_rows -= 1;
+        }
+        if self.footer_rows > 0 {
+            // The footer boundary was at (old_rows - footer_rows).
+            // After deletion: new_rows = old_rows - 1 (already decremented above).
+            // If deleted row was in the footer zone (>= old_rows - footer_rows),
+            // decrement footer_rows. old_rows was self.rows + 1 at this point.
+            let old_rows = self.rows + 1;
+            if row >= old_rows - self.footer_rows {
+                self.footer_rows -= 1;
+            }
+        }
+
         // Rewrite refs: shift all row refs >= row+1 down by 1
         rewrite_refs_after_row_delete(&mut self.cells, row);
     }
@@ -226,6 +241,11 @@ impl TableModel {
         }
         self.col_names = new_names;
 
+        // Adjust header col count
+        if col < self.header_cols && self.header_cols > 0 {
+            self.header_cols -= 1;
+        }
+
         // Rewrite refs: shift all col refs >= col+1 left by 1
         rewrite_refs_after_col_delete(&mut self.cells, col);
     }
@@ -269,6 +289,7 @@ impl TableModel {
     }
 
     /// Get the pretty name for a column if headers provide one, else None.
+    #[allow(dead_code)]
     pub fn col_pretty_name(&self, col: u32) -> Option<String> {
         let name = self.col_display_name(col);
         if name != col_index_to_label(col) {
@@ -279,6 +300,7 @@ impl TableModel {
     }
 
     /// Get the pretty name for a row if headers provide one, else None.
+    #[allow(dead_code)]
     pub fn row_pretty_name(&self, row: u32) -> Option<String> {
         let name = self.row_display_name(row);
         if name != (row + 1).to_string() {
@@ -324,5 +346,239 @@ impl TableModel {
         self.cells
             .get(&(cell_ref.col, cell_ref.row))
             .unwrap_or(&DEFAULT)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::formula::graph::recalculate_table;
+
+    fn make_table(rows: u32, cols: u32) -> TableModel {
+        TableModel::new(1, "T".to_string(), rows, cols)
+    }
+
+    #[test]
+    fn test_delete_row_shifts_data() {
+        let mut t = make_table(4, 2);
+        t.set_cell_source(0, 0, "A".to_string());
+        t.set_cell_source(0, 1, "B".to_string());
+        t.set_cell_source(0, 2, "C".to_string());
+        t.set_cell_source(0, 3, "D".to_string());
+        t.delete_row(1); // delete row containing "B"
+        assert_eq!(t.rows, 3);
+        assert_eq!(t.cells[&(0, 0)].source, "A");
+        assert_eq!(t.cells[&(0, 1)].source, "C");
+        assert_eq!(t.cells[&(0, 2)].source, "D");
+        assert!(t.cells.get(&(0, 3)).is_none());
+    }
+
+    #[test]
+    fn test_delete_row_rewrites_refs() {
+        let mut t = make_table(4, 2);
+        t.set_cell_source(0, 0, "10".to_string());
+        t.set_cell_source(0, 1, "20".to_string());
+        t.set_cell_source(0, 2, "30".to_string());
+        // Formula in col 1 row 3 refs row 3 (=A3 which is 0-indexed row 2)
+        t.set_cell_source(1, 3, "=A3".to_string());
+        t.delete_row(1); // delete 0-indexed row 1 (value "20")
+                         // A3 was 0-indexed row 2, now shifted to row 1. The ref should become A2.
+        assert_eq!(t.cells[&(1, 2)].source, "=A2");
+    }
+
+    #[test]
+    fn test_delete_row_ref_becomes_ref_error() {
+        let mut t = make_table(3, 2);
+        t.set_cell_source(0, 0, "10".to_string());
+        t.set_cell_source(0, 1, "20".to_string());
+        t.set_cell_source(1, 2, "=A2".to_string()); // refs row 1
+        t.delete_row(1); // delete the row that A2 points to
+                         // The formula cell moved from (1,2) to (1,1), and ref A2 (row 1) was deleted
+        assert_eq!(t.cells[&(1, 1)].source, "=#REF!");
+    }
+
+    #[test]
+    fn test_delete_col_shifts_data() {
+        let mut t = make_table(2, 4);
+        t.set_cell_source(0, 0, "A".to_string());
+        t.set_cell_source(1, 0, "B".to_string());
+        t.set_cell_source(2, 0, "C".to_string());
+        t.set_cell_source(3, 0, "D".to_string());
+        t.delete_col(1); // delete col containing "B"
+        assert_eq!(t.cols, 3);
+        assert_eq!(t.cells[&(0, 0)].source, "A");
+        assert_eq!(t.cells[&(1, 0)].source, "C");
+        assert_eq!(t.cells[&(2, 0)].source, "D");
+    }
+
+    #[test]
+    fn test_delete_col_rewrites_refs() {
+        let mut t = make_table(2, 4);
+        t.set_cell_source(0, 0, "10".to_string());
+        t.set_cell_source(1, 0, "20".to_string());
+        t.set_cell_source(2, 0, "30".to_string());
+        t.set_cell_source(3, 0, "=C1".to_string()); // refs col 2
+        t.delete_col(1); // delete col B
+                         // C1 was col 2, now shifted to col 1 = B1. Ref should become B1.
+        assert_eq!(t.cells[&(2, 0)].source, "=B1");
+    }
+
+    #[test]
+    fn test_delete_row_adjusts_header_rows() {
+        let mut t = make_table(5, 2);
+        t.header_rows = 2;
+        t.delete_row(0); // delete first header row
+        assert_eq!(t.header_rows, 1);
+    }
+
+    #[test]
+    fn test_delete_row_adjusts_footer_rows() {
+        let mut t = make_table(5, 2);
+        t.footer_rows = 1;
+        t.delete_row(4); // delete last row (the footer)
+        assert_eq!(t.footer_rows, 0);
+    }
+
+    #[test]
+    fn test_delete_row_body_preserves_headers_footers() {
+        let mut t = make_table(5, 2);
+        t.header_rows = 1;
+        t.footer_rows = 1;
+        t.delete_row(2); // delete a body row
+        assert_eq!(t.header_rows, 1);
+        assert_eq!(t.footer_rows, 1);
+        assert_eq!(t.rows, 4);
+    }
+
+    #[test]
+    fn test_delete_col_adjusts_header_cols() {
+        let mut t = make_table(2, 5);
+        t.header_cols = 2;
+        t.delete_col(0);
+        assert_eq!(t.header_cols, 1);
+    }
+
+    #[test]
+    fn test_move_cell_rewrites_refs() {
+        let mut t = make_table(3, 3);
+        t.set_cell_source(0, 0, "42".to_string());
+        t.set_cell_source(1, 0, "=A1".to_string());
+        t.move_cell((0, 0), (2, 2));
+        // Formula in (1,0) should now reference C3
+        assert_eq!(t.cells[&(1, 0)].source, "=C3");
+    }
+
+    #[test]
+    fn test_copy_cell_shifts_refs() {
+        let mut t = make_table(5, 5);
+        t.set_cell_source(0, 0, "=B2+C3".to_string());
+        t.copy_cell((0, 0), (1, 1));
+        assert_eq!(t.cells[&(1, 1)].source, "=C3+D4");
+    }
+
+    #[test]
+    fn test_formula_evaluation() {
+        let mut t = make_table(3, 2);
+        t.set_cell_source(0, 0, "10".to_string());
+        t.set_cell_source(0, 1, "20".to_string());
+        t.set_cell_source(0, 2, "=A1+A2".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 2)].computed,
+            crate::model::cell::CellValue::Number(30.0)
+        );
+    }
+
+    #[test]
+    fn test_formula_sum_range() {
+        let mut t = make_table(4, 2);
+        t.set_cell_source(0, 0, "1".to_string());
+        t.set_cell_source(0, 1, "2".to_string());
+        t.set_cell_source(0, 2, "3".to_string());
+        t.set_cell_source(0, 3, "=SUM(A1:A3)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 3)].computed,
+            crate::model::cell::CellValue::Number(6.0)
+        );
+    }
+
+    #[test]
+    fn test_formula_cycle_detection() {
+        let mut t = make_table(2, 2);
+        t.set_cell_source(0, 0, "=B1".to_string());
+        t.set_cell_source(1, 0, "=A1".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(
+            t.cells[&(0, 0)].computed,
+            crate::model::cell::CellValue::Error(_)
+        ));
+    }
+
+    #[test]
+    fn test_formula_div_zero() {
+        let mut t = make_table(1, 2);
+        t.set_cell_source(0, 0, "=1/0".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 0)].computed,
+            crate::model::cell::CellValue::Error("#DIV/0!".to_string())
+        );
+    }
+
+    #[test]
+    fn test_is_header_footer_cell() {
+        let mut t = make_table(10, 5);
+        t.header_rows = 2;
+        t.header_cols = 1;
+        t.footer_rows = 1;
+        assert!(t.is_header_cell(0, 0)); // header row
+        assert!(t.is_header_cell(3, 1)); // header row
+        assert!(t.is_header_cell(0, 5)); // header col
+        assert!(t.is_header_cell(2, 9)); // footer row
+        assert!(!t.is_header_cell(2, 5)); // body cell
+    }
+
+    #[test]
+    fn test_col_display_name_from_header() {
+        let mut t = make_table(3, 3);
+        t.header_rows = 1;
+        t.set_cell_source(0, 0, "Name".to_string());
+        t.set_cell_source(1, 0, "Age".to_string());
+        assert_eq!(t.col_display_name(0), "Name");
+        assert_eq!(t.col_display_name(1), "Age");
+        assert_eq!(t.col_display_name(2), "C"); // no header content, falls back
+    }
+
+    #[test]
+    fn test_col_display_name_ignores_formulas() {
+        let mut t = make_table(3, 2);
+        t.header_rows = 1;
+        t.set_cell_source(0, 0, "=1+1".to_string());
+        assert_eq!(t.col_display_name(0), "A"); // formula in header, falls back
+    }
+
+    #[test]
+    fn test_delete_row_then_recalculate() {
+        let mut t = make_table(4, 2);
+        t.set_cell_source(0, 0, "10".to_string());
+        t.set_cell_source(0, 1, "20".to_string());
+        t.set_cell_source(0, 2, "30".to_string());
+        t.set_cell_source(1, 3, "=A3".to_string()); // refs "30"
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(1, 3)].computed,
+            crate::model::cell::CellValue::Number(30.0)
+        );
+
+        t.delete_row(1); // delete "20"
+        recalculate_table(&mut t);
+        // After delete: row 0="10", row 1="30", row 2 has formula.
+        // Formula was =A3, row 2 (value 30) shifted to row 1, so ref becomes =A2
+        assert_eq!(t.cells[&(1, 2)].source, "=A2");
+        assert_eq!(
+            t.cells[&(1, 2)].computed,
+            crate::model::cell::CellValue::Number(30.0)
+        );
     }
 }

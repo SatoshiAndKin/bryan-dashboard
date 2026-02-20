@@ -1,0 +1,1 @@
+window.ethereum works for using a wallet provider, but 
