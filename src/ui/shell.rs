@@ -46,7 +46,8 @@ pub struct UiState {
     /// Which sheet the cell being edited belongs to
     pub editing_sheet_id: Option<SheetId>,
     pub edit_buffer: String,
-    pub clipboard: Option<(TableId, u32, u32)>,
+    /// Clipboard: (table_id, min_col, min_row, max_col, max_row)
+    pub clipboard: Option<(TableId, u32, u32, u32, u32)>,
     pub dragging: Option<(TableId, u32, u32)>,
     pub undo_stack: Vec<UndoEntry>,
     pub redo_stack: Vec<UndoEntry>,
@@ -237,9 +238,9 @@ pub fn WorkbookShell() -> Element {
 
                 // --- Ctrl shortcuts ---
                 if ctrl && e.key() == Key::Character("c".to_string()) && !is_editing {
-                    let sel = ui.read().selected;
-                    if let Some(sel) = sel {
-                        ui.write().clipboard = Some(sel);
+                    let range = ui.read().selection_range();
+                    if let Some(range) = range {
+                        ui.write().clipboard = Some(range);
                     }
                     return;
                 }
@@ -248,15 +249,23 @@ pub fn WorkbookShell() -> Element {
                         let u = ui.read();
                         (u.clipboard, u.selected)
                     };
-                    if let (Some(from), Some(to)) = (clipboard, selected) {
-                        if from.0 == to.0 {
+                    if let (Some((src_tid, sc0, sr0, sc1, sr1)), Some((dst_tid, dc, dr))) = (clipboard, selected) {
+                        if src_tid == dst_tid {
                             let mut wb = workbook.write();
                             if let Some(sheet) = wb.active_sheet_mut() {
-                                if let Some(table) = sheet.table_by_id_mut(from.0) {
-                                    table.copy_cell((from.1, from.2), (to.1, to.2));
+                                if let Some(table) = sheet.table_by_id_mut(src_tid) {
+                                    for col in sc0..=sc1 {
+                                        for row in sr0..=sr1 {
+                                            let dst_col = dc + (col - sc0);
+                                            let dst_row = dr + (row - sr0);
+                                            if (col, row) != (dst_col, dst_row) {
+                                                table.copy_cell((col, row), (dst_col, dst_row));
+                                            }
+                                        }
+                                    }
                                     recalculate_table(table);
                                 }
-                                sheet.recalculate_dependents(from.0);
+                                sheet.recalculate_dependents(src_tid);
                             }
                             save_workbook(&wb); last_saved.set(Some(now_string()));
                         }
@@ -264,34 +273,22 @@ pub fn WorkbookShell() -> Element {
                     return;
                 }
                 if ctrl && e.key() == Key::Character("x".to_string()) && !is_editing {
-                    let sel = ui.read().selected;
-                    if let Some(sel) = sel {
-                        ui.write().clipboard = Some(sel);
-                        let old_source = {
-                            let wb = workbook.read();
-                            wb.active_sheet()
-                                .and_then(|s| s.table_by_id(sel.0))
-                                .and_then(|t| t.cells.get(&(sel.1, sel.2)))
-                                .map(|c| c.source.clone())
-                                .unwrap_or_default()
-                        };
+                    let range = ui.read().selection_range();
+                    if let Some((tid, c0, r0, c1, r1)) = range {
+                        ui.write().clipboard = Some((tid, c0, r0, c1, r1));
                         let mut wb = workbook.write();
                         if let Some(sheet) = wb.active_sheet_mut() {
-                            if let Some(table) = sheet.table_by_id_mut(sel.0) {
-                                table.set_cell_source(sel.1, sel.2, String::new());
+                            if let Some(table) = sheet.table_by_id_mut(tid) {
+                                for col in c0..=c1 {
+                                    for row in r0..=r1 {
+                                        table.set_cell_source(col, row, String::new());
+                                    }
+                                }
                                 recalculate_table(table);
                             }
-                            sheet.recalculate_dependents(sel.0);
+                            sheet.recalculate_dependents(tid);
                         }
                         save_workbook(&wb); last_saved.set(Some(now_string()));
-                        if !old_source.is_empty() {
-                            let mut u = ui.write();
-                            u.undo_stack.push(UndoEntry {
-                                table_id: sel.0, col: sel.1, row: sel.2,
-                                old_source, new_source: String::new(),
-                            });
-                            u.redo_stack.clear();
-                        }
                     }
                     return;
                 }
@@ -818,11 +815,13 @@ pub fn WorkbookShell() -> Element {
             // Formula bar — full width row
             div { class: "formula-bar-row",
                 if let Some((col, row)) = sel_info {
-                    span { class: "cell-indicator",
-                        "{col_index_to_label(col)}{row + 1}"
-                    }
                     if let Some(ref pretty) = sel_pretty_name {
-                        span { class: "cell-indicator-name", "{pretty}" }
+                        span { class: "cell-indicator", "{pretty}" }
+                        span { class: "cell-indicator-name", "{col_index_to_label(col)}{row + 1}" }
+                    } else {
+                        span { class: "cell-indicator",
+                            "{col_index_to_label(col)}{row + 1}"
+                        }
                     }
                 }
                 if editing.is_some() {
@@ -848,7 +847,7 @@ pub fn WorkbookShell() -> Element {
                                 let table_name = table.name.clone();
                                 let t_selected = selected.and_then(|(t, c, r)| if t == tid { Some((c, r)) } else { None });
                                 let t_editing = editing.and_then(|(t, c, r)| if t == tid { Some((c, r)) } else { None });
-                                let t_clipboard = clipboard.and_then(|(t, c, r)| if t == tid { Some((c, r)) } else { None });
+                                let t_clipboard = clipboard.and_then(|(t, mc, mr, xc, xr)| if t == tid { Some((mc, mr, xc, xr)) } else { None });
                                 let t_dragging = dragging.and_then(|(t, c, r)| if t == tid { Some((c, r)) } else { None });
                                 let t_selection_range = ui_state.selection_range()
                                     .and_then(|(t, mc, mr, xc, xr)| if t == tid { Some((mc, mr, xc, xr)) } else { None });

@@ -10,7 +10,7 @@ pub fn SheetView(
     selected: Option<(u32, u32)>,
     editing: Option<(u32, u32)>,
     edit_buffer: String,
-    clipboard: Option<(u32, u32)>,
+    clipboard: Option<(u32, u32, u32, u32)>,
     dragging: Option<(u32, u32)>,
     selection_range: Option<(u32, u32, u32, u32)>,
     on_select_cell: EventHandler<(u32, u32)>,
@@ -93,7 +93,7 @@ pub fn SheetView(
                                     let is_selected = selected == Some((c, r))
                                         || selection_range.map(|(mc, mr, xc, xr)| c >= mc && c <= xc && r >= mr && r <= xr).unwrap_or(false);
                                     let is_editing = editing == Some((c, r));
-                                    let is_clipboard = clipboard == Some((c, r));
+                                    let is_clipboard = clipboard.map(|(mc, mr, xc, xr)| c >= mc && c <= xc && r >= mr && r <= xr).unwrap_or(false);
                                     let is_drag_source = dragging == Some((c, r));
                                     let is_header = table.is_header_cell(c, r);
                                     let cell = table.get_cell(c, r);

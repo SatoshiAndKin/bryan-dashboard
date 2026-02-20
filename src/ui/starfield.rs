@@ -2,14 +2,17 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn Starfield() -> Element {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use_effect(move || {
+            init_starfield();
+        });
+    }
+
     rsx! {
         canvas {
             class: "starfield",
             id: "starfield-canvas",
-            onmounted: move |_| {
-                #[cfg(target_arch = "wasm32")]
-                init_starfield();
-            },
         }
     }
 }
