@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::table::{TableId, TableModel};
 use super::workbook::unique_name;
-use crate::formula::graph::recalculate_table;
+use crate::formula::graph::recalculate_table_with_siblings;
 
 pub type SheetId = u64;
 
@@ -100,8 +100,41 @@ impl Sheet {
     }
 
     pub fn recalculate_all(&mut self) {
+        self.recalculate_all_with_siblings();
+    }
+
+    pub fn recalculate_all_with_siblings(&mut self) {
+        // Two-pass: first pass calculates each table with snapshot of siblings
+        // This handles cross-table references by giving each table a view of others
+        for i in 0..self.tables.len() {
+            let siblings: Vec<_> = self
+                .tables
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .map(|(_, t)| t.clone())
+                .collect();
+            recalculate_table_with_siblings(&mut self.tables[i], &siblings);
+        }
+    }
+
+    pub fn recalculate_dependents(&mut self, changed_table_id: TableId) {
+        // After a table changes, recalculate all other tables that might reference it
+        let snapshot: Vec<_> = self.tables.clone();
         for table in &mut self.tables {
-            recalculate_table(table);
+            if table.id == changed_table_id {
+                continue;
+            }
+            // Check if any cell in this table has a cross-table ref
+            let has_cross_ref = table.cells.values().any(|c| c.source.contains("::"));
+            if has_cross_ref {
+                let siblings: Vec<_> = snapshot
+                    .iter()
+                    .filter(|t| t.id != table.id)
+                    .cloned()
+                    .collect();
+                recalculate_table_with_siblings(table, &siblings);
+            }
         }
     }
 }
@@ -109,6 +142,7 @@ impl Sheet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::formula::graph::recalculate_table;
 
     #[test]
     fn test_new_sheet_has_one_table() {
@@ -188,6 +222,42 @@ mod tests {
         assert_eq!(
             t.cells[&(0, 1)].computed,
             crate::model::cell::CellValue::Number(30.0)
+        );
+    }
+
+    #[test]
+    fn test_cross_table_dependency_tracking() {
+        let mut sheet = Sheet::new(1, "S1".to_string());
+        let t1_id = sheet.tables[0].id;
+        let t2_id = sheet.add_table("Table 2".to_string(), 3, 2);
+
+        // Set up Table 1 with a value
+        let t1 = sheet.table_by_id_mut(t1_id).unwrap();
+        t1.set_cell_source(0, 0, "42".to_string());
+
+        // Set up Table 2 with a cross-table ref to Table 1
+        let t2 = sheet.table_by_id_mut(t2_id).unwrap();
+        t2.set_cell_source(0, 0, "=Table 1::A1".to_string());
+
+        // Recalculate all with siblings
+        sheet.recalculate_all();
+
+        let t2 = sheet.table_by_id(t2_id).unwrap();
+        assert_eq!(
+            t2.cells[&(0, 0)].computed,
+            crate::model::cell::CellValue::Number(42.0)
+        );
+
+        // Now change Table 1 and recalculate dependents
+        let t1 = sheet.table_by_id_mut(t1_id).unwrap();
+        t1.set_cell_source(0, 0, "100".to_string());
+        recalculate_table(sheet.table_by_id_mut(t1_id).unwrap());
+        sheet.recalculate_dependents(t1_id);
+
+        let t2 = sheet.table_by_id(t2_id).unwrap();
+        assert_eq!(
+            t2.cells[&(0, 0)].computed,
+            crate::model::cell::CellValue::Number(100.0)
         );
     }
 }

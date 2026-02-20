@@ -230,6 +230,7 @@ pub fn WorkbookShell() -> Element {
                                     table.copy_cell((from.1, from.2), (to.1, to.2));
                                     recalculate_table(table);
                                 }
+                                sheet.recalculate_dependents(from.0);
                             }
                             save_workbook(&wb); last_saved.set(Some(now_string()));
                         }
@@ -254,6 +255,7 @@ pub fn WorkbookShell() -> Element {
                                 table.set_cell_source(sel.1, sel.2, String::new());
                                 recalculate_table(table);
                             }
+                            sheet.recalculate_dependents(sel.0);
                         }
                         save_workbook(&wb); last_saved.set(Some(now_string()));
                         if !old_source.is_empty() {
@@ -278,6 +280,7 @@ pub fn WorkbookShell() -> Element {
                                 table.set_cell_source(entry.col, entry.row, entry.old_source.clone());
                                 recalculate_table(table);
                             }
+                            sheet.recalculate_dependents(entry.table_id);
                         }
                         save_workbook(&wb); last_saved.set(Some(now_string()));
                         ui.write().redo_stack.push(entry);
@@ -297,6 +300,7 @@ pub fn WorkbookShell() -> Element {
                                 table.set_cell_source(entry.col, entry.row, entry.new_source.clone());
                                 recalculate_table(table);
                             }
+                            sheet.recalculate_dependents(entry.table_id);
                         }
                         save_workbook(&wb); last_saved.set(Some(now_string()));
                         ui.write().undo_stack.push(entry);
@@ -341,6 +345,7 @@ pub fn WorkbookShell() -> Element {
                                                 table.set_cell_source(col, row, String::new());
                                                 recalculate_table(table);
                                             }
+                                            sheet.recalculate_dependents(tid);
                                         }
                                         save_workbook(&wb); last_saved.set(Some(now_string()));
                                         let mut u = ui.write();
@@ -1012,6 +1017,7 @@ pub fn WorkbookShell() -> Element {
                                                                 table.set_cell_source(col, row, new_source.clone());
                                                                 recalculate_table(table);
                                                             }
+                                                            sheet.recalculate_dependents(etid);
                                                         }
                                                         save_workbook(&wb); last_saved.set(Some(now_string()));
                                                     }
@@ -1067,6 +1073,7 @@ pub fn WorkbookShell() -> Element {
                                                                 table.move_cell((fc, fr), (col, row));
                                                                 recalculate_table(table);
                                                             }
+                                                            sheet.recalculate_dependents(tid);
                                                         }
                                                         save_workbook(&wb); last_saved.set(Some(now_string()));
                                                     }
@@ -1157,6 +1164,7 @@ pub fn WorkbookShell() -> Element {
                                                 table.delete_row(row);
                                                 recalculate_table(table);
                                             }
+                                            sheet.recalculate_dependents(tid);
                                         }
                                         save_workbook(&wb); last_saved.set(Some(now_string()));
                                         let mut u = ui.write();
@@ -1173,6 +1181,7 @@ pub fn WorkbookShell() -> Element {
                                                 table.delete_col(col);
                                                 recalculate_table(table);
                                             }
+                                            sheet.recalculate_dependents(tid);
                                         }
                                         save_workbook(&wb); last_saved.set(Some(now_string()));
                                         let mut u = ui.write();

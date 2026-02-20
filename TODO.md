@@ -146,9 +146,9 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 - [x] multi-cell selection: shift-click ranges, drag-select, header click to select entire row/col
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] cross-table formula dependency tracking: recalculate dependent tables when a source table changes
+- [x] cross-table formula dependency tracking: recalculate dependent tables when a source table changes
 
 - [ ] git commit
 
