@@ -460,8 +460,7 @@ body {
 
 .buddy-bubble {
     position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 0;
     background: rgba(15, 25, 50, 0.8);
     border: 1px solid rgba(74, 144, 217, 0.4);
     border-radius: 6px;
@@ -473,9 +472,9 @@ body {
 }
 
 @keyframes bubble-fade {
-    0% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    0% { opacity: 1; transform: translateY(0); }
     70% { opacity: 1; }
-    100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+    100% { opacity: 0; transform: translateY(-8px); }
 }
 
 .canvas-table {

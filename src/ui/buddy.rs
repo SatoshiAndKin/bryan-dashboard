@@ -32,7 +32,7 @@ pub fn BuddyCharacter(messages: Vec<(String, f64)>) -> Element {
             for (i, (msg, _ts)) in messages.iter().enumerate() {
                 div {
                     class: "buddy-bubble",
-                    style: "bottom: {20 + i as i32 * 24}px;",
+                    style: "right: 0; bottom: {20 + i as i32 * 24}px;",
                     "{msg}"
                 }
             }
