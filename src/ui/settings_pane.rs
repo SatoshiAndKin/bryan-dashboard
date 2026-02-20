@@ -15,7 +15,7 @@ enum RpcTestResult {
 #[component]
 pub fn SettingsPane(
     settings: AppSettings,
-    block_head: Option<BlockHead>,
+    block_heads: HashMap<u64, BlockHead>,
     on_save: EventHandler<AppSettings>,
     on_close: EventHandler<()>,
 ) -> Element {
@@ -51,9 +51,11 @@ pub fn SettingsPane(
                     }
                     for (i, entry) in draft_entries.read().iter().enumerate() {
                         {
+                            let entry_chain_id = entry.chain_id;
                             let chain_id = entry.chain_id.to_string();
                             let chain_name = entry.chain_name.clone();
                             let urls = entry.urls.clone();
+                            let bh = block_heads.get(&entry_chain_id).cloned();
                             rsx! {
                                 div { class: "rpc-entry",
                                     div { class: "rpc-entry-row",
@@ -117,6 +119,22 @@ pub fn SettingsPane(
                                                 }
                                             },
                                             None => rsx! {},
+                                        }
+                                    }
+                                    if let Some(bh) = &bh {
+                                        div { class: "rpc-block-info",
+                                            span { "Block {bh.number}" }
+                                            span { class: "mono", "{bh.hash.get(..18).unwrap_or(&bh.hash)}..." }
+                                            if bh.timestamp > 0 {
+                                                {
+                                                    let now = (js_sys::Date::now() / 1000.0) as u64;
+                                                    let ago = now.saturating_sub(bh.timestamp);
+                                                    rsx! { span { "{ago}s ago" } }
+                                                }
+                                            }
+                                            if let Some(fee) = bh.base_fee {
+                                                span { "Base fee: {fee} wei" }
+                                            }
                                         }
                                     }
                                 }
@@ -190,40 +208,6 @@ pub fn SettingsPane(
                     }
                     span { class: "settings-hint",
                         "Used for ABI fetching and contract verification"
-                    }
-                }
-
-                if let Some(bh) = &block_head {
-                    div { class: "settings-block-info",
-                        span { class: "settings-label", "Latest block" }
-                        div { class: "block-info-row",
-                            span { class: "block-info-label", "Number:" }
-                            span { class: "block-info-value", "{bh.number}" }
-                        }
-                        div { class: "block-info-row",
-                            span { class: "block-info-label", "Hash:" }
-                            span { class: "block-info-value mono",
-                                "{bh.hash.get(..18).unwrap_or(&bh.hash)}..."
-                            }
-                        }
-                        if bh.timestamp > 0 {
-                            {
-                                let now = (js_sys::Date::now() / 1000.0) as u64;
-                                let ago = now.saturating_sub(bh.timestamp);
-                                rsx! {
-                                    div { class: "block-info-row",
-                                        span { class: "block-info-label", "Age:" }
-                                        span { class: "block-info-value", "{ago}s ago" }
-                                    }
-                                }
-                            }
-                        }
-                        if let Some(fee) = bh.base_fee {
-                            div { class: "block-info-row",
-                                span { class: "block-info-label", "Base fee:" }
-                                span { class: "block-info-value", "{fee} wei" }
-                            }
-                        }
                     }
                 }
 

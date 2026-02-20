@@ -7,7 +7,7 @@ type AnimCallback =
 #[component]
 pub fn BuddyCharacter() -> Element {
     let pos_x = use_signal(|| 60.0_f64);
-    let pos_y = use_signal(|| 60.0_f64);
+    let pos_y = use_signal(|| 120.0_f64);
     #[allow(unused_variables)]
     let mouse_x = use_signal(|| -1000.0_f64);
     #[allow(unused_variables)]
@@ -122,8 +122,9 @@ fn start_buddy_loop(
         x += vx;
         y += vy;
 
-        // Bounce off edges
+        // Bounce off edges — keep below the header (tabs + toolbar ~70px)
         let margin = 40.0;
+        let top_margin = 80.0;
         if x < margin {
             x = margin;
             vx = vx.abs();
@@ -132,8 +133,8 @@ fn start_buddy_loop(
             x = w - margin;
             vx = -vx.abs();
         }
-        if y < margin {
-            y = margin;
+        if y < top_margin {
+            y = top_margin;
             vy = vy.abs();
         }
         if y > h - margin {

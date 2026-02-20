@@ -98,7 +98,8 @@ pub fn WorkbookShell() -> Element {
         let s = load_settings();
         s.rpc_for_chain(1).and_then(|e| e.primary_url()).is_none()
     });
-    let block_head: Signal<Option<BlockHead>> = use_signal(|| None);
+    let block_heads: Signal<std::collections::HashMap<u64, BlockHead>> =
+        use_signal(std::collections::HashMap::new);
     let mut last_saved: Signal<Option<String>> = use_signal(|| None);
     let balance_cache: Signal<std::collections::HashMap<String, String>> =
         use_signal(std::collections::HashMap::new);
@@ -109,16 +110,23 @@ pub fn WorkbookShell() -> Element {
         let settings_clone = settings.read().clone();
         use_effect(move || {
             let s = settings_clone.clone();
-            let bh = block_head;
-            spawn(async move {
-                connect_eth(s, bh).await;
-            });
+            let bh = block_heads;
+            for entry in &s.rpc_entries {
+                if entry.primary_url().is_some() {
+                    let entry = entry.clone();
+                    let poll = s.poll_interval_secs;
+                    spawn(async move {
+                        connect_eth_entry(entry, poll, bh).await;
+                    });
+                }
+            }
         });
     }
 
     // Recalculate all formulas when block_head changes (for BLOCK_NUMBER etc)
     {
-        let bh = block_head.read().clone();
+        let heads = block_heads.read().clone();
+        let bh = heads.get(&1).cloned();
         let cache = balance_cache.read().clone();
         let rpc_url = settings
             .read()
@@ -1123,7 +1131,7 @@ pub fn WorkbookShell() -> Element {
             if show_settings() {
                 SettingsPane {
                     settings: settings.read().clone(),
-                    block_head: block_head.read().clone(),
+                    block_heads: block_heads.read().clone(),
                     on_save: move |new_settings: AppSettings| {
                         save_settings(&new_settings);
                         settings.set(new_settings);
@@ -1367,30 +1375,29 @@ fn push_toast(ui: &mut Signal<UiState>, message: String) {
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn connect_eth(settings: AppSettings, mut block_head: Signal<Option<BlockHead>>) {
-    let entry = match settings.rpc_for_chain(1) {
-        Some(e) => e.clone(),
-        None => {
-            block_head.set(None);
-            return;
-        }
-    };
+async fn connect_eth_entry(
+    entry: crate::model::settings::RpcEntry,
+    poll_interval_secs: u32,
+    block_heads: Signal<std::collections::HashMap<u64, BlockHead>>,
+) {
     let url = match entry.primary_url() {
         Some(u) => u,
-        None => {
-            block_head.set(None);
-            return;
-        }
+        None => return,
     };
+    let chain_id = entry.chain_id;
     if entry.is_websocket() {
-        connect_eth_ws(&url, block_head).await;
+        connect_eth_ws(&url, chain_id, block_heads).await;
     } else {
-        poll_eth_http(&url, settings.poll_interval_secs, block_head).await;
+        poll_eth_http(&url, chain_id, poll_interval_secs, block_heads).await;
     }
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn connect_eth_ws(url: &str, mut block_head: Signal<Option<BlockHead>>) {
+async fn connect_eth_ws(
+    url: &str,
+    chain_id: u64,
+    mut block_heads: Signal<std::collections::HashMap<u64, BlockHead>>,
+) {
     use crate::eth::parse_block_head;
     use wasm_bindgen::prelude::Closure;
     use wasm_bindgen::JsCast;
@@ -1404,7 +1411,6 @@ async fn connect_eth_ws(url: &str, mut block_head: Signal<Option<BlockHead>>) {
     };
     ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
 
-    // On open: send eth_subscribe for newHeads
     let ws_clone = ws.clone();
     let onopen = Closure::<dyn FnMut()>::new(move || {
         let subscribe_msg = serde_json::json!({
@@ -1418,21 +1424,20 @@ async fn connect_eth_ws(url: &str, mut block_head: Signal<Option<BlockHead>>) {
     ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
     onopen.forget();
 
-    // On message: parse subscription notification
     let onmessage =
         Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |e: web_sys::MessageEvent| {
             if let Some(text) = e.data().as_string() {
                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
-                    // Subscription notifications come as {"params": {"result": {...}}}
                     if let Some(result) = val.get("params").and_then(|p| p.get("result")) {
-                        if let Some(bh) = parse_block_head(result) {
-                            block_head.set(Some(bh));
+                        if let Some(mut bh) = parse_block_head(result) {
+                            bh.chain_id = chain_id;
+                            block_heads.write().insert(chain_id, bh);
                         }
                     }
-                    // Initial subscription response or other messages — try result directly
                     if let Some(result) = val.get("result") {
-                        if let Some(bh) = parse_block_head(result) {
-                            block_head.set(Some(bh));
+                        if let Some(mut bh) = parse_block_head(result) {
+                            bh.chain_id = chain_id;
+                            block_heads.write().insert(chain_id, bh);
                         }
                     }
                 }
@@ -1447,14 +1452,17 @@ async fn connect_eth_ws(url: &str, mut block_head: Signal<Option<BlockHead>>) {
     ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
     onerror.forget();
 
-    // Keep alive — don't drop. The closures keep a reference to the ws.
-    // We use a pending future that never resolves to keep the task alive.
     let (_, rx) = futures_channel::oneshot::channel::<()>();
     let _ = rx.await;
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn poll_eth_http(url: &str, interval_secs: u32, mut block_head: Signal<Option<BlockHead>>) {
+async fn poll_eth_http(
+    url: &str,
+    chain_id: u64,
+    interval_secs: u32,
+    mut block_heads: Signal<std::collections::HashMap<u64, BlockHead>>,
+) {
     use crate::eth::parse_block_head;
 
     let body = serde_json::json!({
@@ -1469,8 +1477,9 @@ async fn poll_eth_http(url: &str, interval_secs: u32, mut block_head: Signal<Opt
         match fetch_json_rpc(url, &body).await {
             Ok(val) => {
                 if let Some(result) = val.get("result") {
-                    if let Some(bh) = parse_block_head(result) {
-                        block_head.set(Some(bh));
+                    if let Some(mut bh) = parse_block_head(result) {
+                        bh.chain_id = chain_id;
+                        block_heads.write().insert(chain_id, bh);
                     }
                 }
             }
