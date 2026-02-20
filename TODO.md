@@ -2,69 +2,69 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 # Todos
 
-- [ ] update the readme to better explain this project. still include info about how to use dioxus, but the readme should be mostly about this app.
+- [x] update the readme to better explain this project. still include info about how to use dioxus, but the readme should be mostly about this app.
 
-- [ ] add tests for any functions that have complicated logic. be sure cargo nextest coverage covers all happy paths
+- [x] add tests for any functions that have complicated logic. be sure cargo nextest coverage covers all happy paths
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] pretty row/col names are showing around the table, but they aren't being shown in the equations. they also don't seem usable in the equations (i always see #ref). write a test to cover these working
+- [x] pretty row/col names are showing around the table, but they aren't being shown in the equations. they also don't seem usable in the equations (i always see #ref). write a test to cover these working
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] the table container should shrink to the size needed. right now its too wide. also, scrolling doesn't work how it works in numbers. scrolling the sheet should be the main view. we don't want to scroll the tables themselves
+- [x] the table container should shrink to the size needed. right now its too wide. also, scrolling doesn't work how it works in numbers. scrolling the sheet should be the main view. we don't want to scroll the tables themselves
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] there should be a "last saved" timestamp in the header.
+- [x] there should be a "last saved" timestamp in the header.
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] the outermost background should be fun to look at. I want a simple starfield.
+- [x] the outermost background should be fun to look at. I want a simple starfield.
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] the header is getting crowded. move the formula editing bar to its own row; it should have full width of the page
+- [x] the header is getting crowded. move the formula editing bar to its own row; it should have full width of the page
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] the + sheet button is bright white and ugly.
+- [x] the + sheet button is bright white and ugly.
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] the containers around the table are always full window width, but that is wrong. the table should shrink or grow to fit all the cells. this means it might be larger than the viewport. that is fine. scrolling around should scroll the entire sheet's viewport, not each table individually
+- [x] the containers around the table are always full window width, but that is wrong. the table should shrink or grow to fit all the cells. this means it might be larger than the viewport. that is fine. scrolling around should scroll the entire sheet's viewport, not each table individually
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] add formula for displaying the current block number and block hash
+- [x] add formula for displaying the current block number and block hash
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] add formula for querying eth balances of an account. it should 
+- [x] add formula for querying eth balances of an account. it should 
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] etherscan v2 api key should be in the settings pane
+- [x] etherscan v2 api key should be in the settings pane
 
-- [ ] git commit
+- [x] git commit
 
 - [ ] add formula for doing an eth_call. I'm not sure how we should handle contract abis. function selectors are always hard to read, so i want to use actual function names. attach abis to addresses by fetching them from etherscan api. maybe they should be in a settings pane? think about this.
 
 - [ ] git commit
 
-- [ ] the equation bar should have an entire row of space to itself. it should really stand out when selecting things.
+- [x] the equation bar should have an entire row of space to itself. it should really stand out when selecting things.
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] there should be a star field
+- [x] there should be a star field
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] the rpc settings pane should attach chain ids to each url. users should be able to add many rpcs, but they must all have unique chain ids. allow multiple providers with the same chain id by doing comma seperated values.
+- [x] the rpc settings pane should attach chain ids to each url. users should be able to add many rpcs, but they must all have unique chain ids. allow multiple providers with the same chain id by doing comma seperated values.
 
-- [ ] git commit
+- [x] git commit
 
 - [ ] if there are multiple providers, use the fallback_layer
 
@@ -90,9 +90,9 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 - [ ] git commit
 
-- [ ] block number and block hash should take an argument for chain id
+- [x] block number and block hash should take an argument for chain id
 
-- [ ] git commit
+- [x] git commit
 
 - [ ] what needs more test coverage? i want to be sure any logically complex things have good coverage
 
@@ -111,3 +111,15 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 - [ ] git commit
 
 - [ ] inspect the code. what do you think we are missing? add that to the bottom of the PLAN.md and then implement it. if they are very large and complex ideas, or you need my input to do them, add them to `TODO_FUTURE.md`. BE SURE TO `git commit` between every major step!
+
+- [ ] the header is very hard to read now that the star field was added. i think theres some bugs there. the header needs to be highly legible.
+
+- [ ] git commit
+
+- [ ] the star field doesn't look right. it should repeat for the whole background. right now it just fills the top. also, its not very pretty. i want something pretty
+
+- [ ] git commit
+
+- [ ] when i have a cell selected and then press a key, the keys get doubled. for example, "=" becomes "==". This is a bug that should be fixed.
+
+- [ ] git commit

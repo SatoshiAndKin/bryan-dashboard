@@ -31,6 +31,8 @@ body {
     background: #16213e;
     border-bottom: 1px solid #0f3460;
     flex-shrink: 0;
+    position: relative;
+    z-index: 10;
 }
 
 .last-saved {
@@ -133,6 +135,8 @@ body {
     border-bottom: 1px solid #0f3460;
     flex-shrink: 0;
     height: 34px;
+    position: relative;
+    z-index: 10;
 }
 
 .toolbar-btn {
@@ -269,6 +273,8 @@ body {
     flex-shrink: 0;
     min-height: 36px;
     transition: background 0.15s, border-color 0.15s;
+    position: relative;
+    z-index: 10;
 }
 
 .formula-bar-row:has(.formula-bar:not(.readonly)) {
@@ -282,6 +288,7 @@ body {
     flex: 1;
     overflow: auto;
     position: relative;
+    z-index: 1;
 }
 
 /* Canvas area — all tables rendered here, Numbers-style */

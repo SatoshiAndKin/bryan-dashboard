@@ -321,6 +321,52 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
             }
             CellValue::Text("#LOADING...".to_string())
         }
+        "ETH_CALL" => {
+            // ETH_CALL(address, "functionName(argTypes)", [arg1], [arg2], ...)
+            // For now: validates inputs and returns #LOADING... or cached result
+            if args.len() < 2 {
+                return CellValue::Error(
+                    "#ARGS! ETH_CALL(address, \"function(types)\", args...)".to_string(),
+                );
+            }
+            let addr_val = evaluate(&args[0], ctx);
+            let addr = match &addr_val {
+                CellValue::Text(s) => s.trim().to_lowercase(),
+                _ => return CellValue::Error("#VALUE! address required".to_string()),
+            };
+            if !addr.starts_with("0x") || addr.len() != 42 {
+                return CellValue::Error("#VALUE! invalid address".to_string());
+            }
+            let sig_val = evaluate(&args[1], ctx);
+            let sig = match &sig_val {
+                CellValue::Text(s) => s.trim().to_string(),
+                _ => return CellValue::Error("#VALUE! function signature required".to_string()),
+            };
+            if sig.is_empty() {
+                return CellValue::Error("#VALUE! empty function signature".to_string());
+            }
+            // Build a cache key from address + sig + args
+            let mut cache_key = format!("call:{}:{}", addr, sig);
+            for arg_expr in args.iter().skip(2) {
+                let v = evaluate(arg_expr, ctx);
+                cache_key.push(':');
+                cache_key.push_str(&v.to_string());
+            }
+            // Check cache
+            if let Some(cache) = ctx.balance_cache {
+                if let Some(result) = cache.get(&cache_key) {
+                    return CellValue::Text(result.clone());
+                }
+            }
+            // Request lookup (reuse pending_lookups with the cache key)
+            if let Some(pending) = ctx.pending_lookups {
+                let mut p = pending.borrow_mut();
+                if !p.contains(&cache_key) {
+                    p.push(cache_key);
+                }
+            }
+            CellValue::Text("#LOADING...".to_string())
+        }
         _ => CellValue::Error(format!("#NAME? {}", name)),
     }
 }

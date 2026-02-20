@@ -1,9 +1,5 @@
 use dioxus::prelude::*;
 
-#[cfg(target_arch = "wasm32")]
-type AnimCallback =
-    std::rc::Rc<std::cell::RefCell<Option<wasm_bindgen::prelude::Closure<dyn FnMut(f64)>>>>;
-
 #[component]
 pub fn Starfield() -> Element {
     rsx! {
@@ -16,6 +12,23 @@ pub fn Starfield() -> Element {
             },
         }
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+type AnimCallback =
+    std::rc::Rc<std::cell::RefCell<Option<wasm_bindgen::prelude::Closure<dyn FnMut(f64)>>>>;
+
+#[cfg(target_arch = "wasm32")]
+struct Star {
+    x: f64,
+    y: f64,
+    size: f64,
+    brightness: f64,
+    twinkle_speed: f64,
+    twinkle_offset: f64,
+    drift_x: f64,
+    drift_y: f64,
+    hue_shift: f64,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -52,6 +65,8 @@ fn init_starfield() {
         .unwrap_or(1080.0);
     canvas.set_width((w * dpr) as u32);
     canvas.set_height((h * dpr) as u32);
+    let _ = canvas.style().set_property("width", &format!("{}px", w));
+    let _ = canvas.style().set_property("height", &format!("{}px", h));
 
     let ctx = match canvas
         .get_context("2d")
@@ -64,48 +79,132 @@ fn init_starfield() {
     };
     ctx.scale(dpr, dpr).ok();
 
-    // Generate stars
-    let num_stars = 200;
-    let mut stars: Vec<(f64, f64, f64, f64)> = Vec::with_capacity(num_stars);
-    // Simple pseudo-random using a seed
-    let mut seed: u64 = 42;
+    let num_stars = 350;
+    let mut stars: Vec<Star> = Vec::with_capacity(num_stars);
+    let mut seed: u64 = 7919; // prime seed
+
+    let mut rng = |seed: &mut u64| -> f64 {
+        *seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (*seed >> 33) as f64 / (u32::MAX as f64)
+    };
+
     for _ in 0..num_stars {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let x = (seed as f64 / u64::MAX as f64) * w;
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let y = (seed as f64 / u64::MAX as f64) * h;
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let size = 0.5 + (seed as f64 / u64::MAX as f64) * 1.5;
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let speed = 0.002 + (seed as f64 / u64::MAX as f64) * 0.008;
-        stars.push((x, y, size, speed));
+        let layer = rng(&mut seed);
+        let size = if layer < 0.6 {
+            0.3 + rng(&mut seed) * 0.7 // small dim stars (60%)
+        } else if layer < 0.9 {
+            1.0 + rng(&mut seed) * 1.0 // medium stars (30%)
+        } else {
+            1.8 + rng(&mut seed) * 1.2 // bright large stars (10%)
+        };
+
+        let brightness = if layer < 0.6 {
+            0.2 + rng(&mut seed) * 0.3
+        } else if layer < 0.9 {
+            0.4 + rng(&mut seed) * 0.4
+        } else {
+            0.7 + rng(&mut seed) * 0.3
+        };
+
+        stars.push(Star {
+            x: rng(&mut seed) * w,
+            y: rng(&mut seed) * h,
+            size,
+            brightness,
+            twinkle_speed: 0.5 + rng(&mut seed) * 2.5,
+            twinkle_offset: rng(&mut seed) * std::f64::consts::TAU,
+            drift_x: (rng(&mut seed) - 0.5) * 0.03,
+            drift_y: 0.005 + rng(&mut seed) * 0.02,
+            hue_shift: rng(&mut seed),
+        });
     }
 
-    // Animation loop
     let stars = std::rc::Rc::new(std::cell::RefCell::new(stars));
     let cb: AnimCallback = std::rc::Rc::new(std::cell::RefCell::new(None));
     let cb_clone = cb.clone();
     let stars_clone = stars.clone();
 
-    *cb.borrow_mut() = Some(Closure::new(move |_t: f64| {
-        ctx.set_fill_style_str("#0a0a1a");
+    *cb.borrow_mut() = Some(Closure::new(move |t: f64| {
+        let t_sec = t / 1000.0;
+
+        // Dark background with subtle gradient feel
+        ctx.set_fill_style_str("#060612");
         ctx.fill_rect(0.0, 0.0, w, h);
 
+        // Subtle nebula glow patches
+        let glow_colors = [
+            (w * 0.2, h * 0.3, 200.0, "rgba(30, 20, 60, 0.15)"),
+            (w * 0.7, h * 0.6, 250.0, "rgba(15, 30, 50, 0.12)"),
+            (w * 0.5, h * 0.8, 180.0, "rgba(20, 15, 45, 0.10)"),
+        ];
+        for (gx, gy, gr, gc) in &glow_colors {
+            let gradient = match ctx.create_radial_gradient(*gx, *gy, 0.0, *gx, *gy, *gr) {
+                Ok(g) => g,
+                Err(_) => continue,
+            };
+            let _ = gradient.add_color_stop(0.0, gc);
+            let _ = gradient.add_color_stop(1.0, "rgba(0,0,0,0)");
+            ctx.set_fill_style_canvas_gradient(&gradient);
+            ctx.fill_rect(gx - gr, gy - gr, gr * 2.0, gr * 2.0);
+        }
+
         let mut stars = stars_clone.borrow_mut();
-        for (x, y, size, speed) in stars.iter_mut() {
-            // Twinkle: vary alpha with time
-            let alpha = 0.4 + (*speed * 60.0).min(0.6);
-            ctx.set_fill_style_str(&format!("rgba(200, 210, 255, {:.2})", alpha));
+        for star in stars.iter_mut() {
+            let twinkle = ((t_sec * star.twinkle_speed + star.twinkle_offset).sin() + 1.0) / 2.0;
+            let alpha = star.brightness * (0.4 + 0.6 * twinkle);
+
+            // Color variation: most stars white-blue, some warmer
+            let (r, g, b) = if star.hue_shift < 0.7 {
+                // White-blue
+                let blue_mix = 0.8 + star.hue_shift * 0.2;
+                (
+                    (180.0 + 60.0 * blue_mix) as u8,
+                    (190.0 + 50.0 * blue_mix) as u8,
+                    (220.0 + 35.0 * blue_mix) as u8,
+                )
+            } else if star.hue_shift < 0.85 {
+                // Warm yellow-white
+                (240, 220, 180)
+            } else if star.hue_shift < 0.95 {
+                // Pale orange
+                (240, 200, 160)
+            } else {
+                // Faint blue-purple
+                (180, 170, 240)
+            };
+
+            ctx.set_global_alpha(alpha);
+            ctx.set_fill_style_str(&format!("rgb({},{},{})", r, g, b));
             ctx.begin_path();
-            ctx.arc(*x, *y, *size, 0.0, std::f64::consts::TAU).ok();
+            ctx.arc(star.x, star.y, star.size, 0.0, std::f64::consts::TAU)
+                .ok();
             ctx.fill();
 
-            // Slowly drift downward
-            *y += *speed * 0.5;
-            if *y > h + 2.0 {
-                *y = -2.0;
+            // Glow for brighter stars
+            if star.size > 1.2 {
+                ctx.set_global_alpha(alpha * 0.15);
+                ctx.begin_path();
+                ctx.arc(star.x, star.y, star.size * 3.0, 0.0, std::f64::consts::TAU)
+                    .ok();
+                ctx.fill();
+            }
+
+            // Drift
+            star.x += star.drift_x;
+            star.y += star.drift_y;
+            if star.y > h + 4.0 {
+                star.y = -4.0;
+            }
+            if star.x > w + 4.0 {
+                star.x = -4.0;
+            } else if star.x < -4.0 {
+                star.x = w + 4.0;
             }
         }
+
+        ctx.set_global_alpha(1.0);
 
         if let Some(win) = web_sys::window() {
             if let Some(ref closure) = *cb_clone.borrow() {

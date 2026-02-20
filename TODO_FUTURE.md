@@ -20,3 +20,7 @@
     - like, right now i have AGENTS.md that describes a single agent that knows dioxus. but i need one that knows alloy, too. and i think they should be one that knows multiple topics. i've seen lots of people makign a bunch of hyper specialized agents. but i find most of the code i write to be gluing multiple projects together. you need cross domain knowledge for that.
 
 - [ ] whenever the block updates, all the relevant cells need to update. how can we leverage dioxus signals for this?
+
+- [ ] how should getting prices/routes from flashprofits-rs work?
+
+- [ ] is it possible to attach `window.ethereum` to the alloy provider? I think maybe not. discuss this.

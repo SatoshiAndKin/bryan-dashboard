@@ -208,6 +208,9 @@ pub fn WorkbookShell() -> Element {
                                     && e.key() != Key::Backspace
                                     && e.key() != Key::Delete
                                 {
+                                    // Prevent the keystroke from also being typed into the
+                                    // input that will appear, which would double the character.
+                                    e.prevent_default();
                                     drop(u);
                                     let sid = workbook.read().active_sheet_id;
                                     let mut u = ui.write();
