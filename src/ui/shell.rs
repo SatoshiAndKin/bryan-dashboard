@@ -121,11 +121,44 @@ pub fn WorkbookShell() -> Element {
         let settings_clone = settings.read().clone();
         use_effect(move || {
             let s = settings_clone.clone();
-            let bh = block_heads;
+            let mut bh = block_heads;
             for entry in &s.rpc_entries {
-                if entry.primary_url().is_some() {
+                if let Some(url) = entry.primary_url() {
                     let entry = entry.clone();
                     let poll = s.poll_interval_secs;
+                    let chain_id = entry.chain_id;
+                    // Eagerly fetch first block via HTTP so formulas resolve immediately
+                    let eager_url = if entry.is_websocket() {
+                        // Try converting wss:// to https:// for initial fetch
+                        let u = url.to_lowercase();
+                        if u.starts_with("wss://") {
+                            Some(format!("https://{}", &url[6..]))
+                        } else if u.starts_with("ws://") {
+                            Some(format!("http://{}", &url[5..]))
+                        } else {
+                            None
+                        }
+                    } else {
+                        Some(url)
+                    };
+                    if let Some(fetch_url) = eager_url {
+                        spawn(async move {
+                            let body = serde_json::json!({
+                                "jsonrpc": "2.0", "id": 1,
+                                "method": "eth_getBlockByNumber",
+                                "params": ["latest", false]
+                            })
+                            .to_string();
+                            if let Ok(val) = fetch_json_rpc(&fetch_url, &body).await {
+                                if let Some(result) = val.get("result") {
+                                    if let Some(mut head) = parse_block_head(result) {
+                                        head.chain_id = chain_id;
+                                        bh.write().insert(chain_id, head);
+                                    }
+                                }
+                            }
+                        });
+                    }
                     spawn(async move {
                         connect_eth_entry(entry, poll, bh).await;
                     });
