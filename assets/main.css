@@ -1,0 +1,494 @@
+/* Bryan Dashboard — Spreadsheet Styles */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: #1a1a2e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+}
+
+.workbook-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    outline: none;
+}
+
+/* Table Tabs */
+.table-tabs {
+    display: flex;
+    align-items: center;
+    background: #16213e;
+    border-bottom: 1px solid #0f3460;
+    padding: 0 8px;
+    height: 36px;
+    flex-shrink: 0;
+    overflow-x: auto;
+    gap: 2px;
+}
+
+.tab {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    color: #a0a0b8;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+}
+
+.tab:hover {
+    background: #1a1a3e;
+    color: #d0d0e8;
+}
+
+.tab.active {
+    background: #1a1a2e;
+    color: #fff;
+    border-bottom: 2px solid #4a90d9;
+}
+
+.tab.add-tab {
+    color: #4a90d9;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 4px 12px;
+}
+
+.tab-delete {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 2px;
+    line-height: 1;
+}
+
+.tab-delete:hover {
+    color: #f44;
+}
+
+.tab-rename-input {
+    background: #0d1b2a;
+    border: 1px solid #4a90d9;
+    color: #fff;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    width: 80px;
+    outline: none;
+}
+
+/* Sheet Toolbar */
+.sheet-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: #16213e;
+    border-bottom: 1px solid #0f3460;
+    flex-shrink: 0;
+    height: 34px;
+}
+
+.toolbar-btn {
+    background: #0f3460;
+    border: 1px solid #1a4a7a;
+    color: #c0c0d8;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s;
+}
+
+.toolbar-btn:hover {
+    background: #1a4a7a;
+    color: #fff;
+}
+
+.toolbar-btn.danger {
+    border-color: #5a2020;
+    color: #d88;
+}
+
+.toolbar-btn.danger:hover {
+    background: #5a2020;
+    color: #faa;
+}
+
+.cell-indicator {
+    background: #0d1b2a;
+    border: 1px solid #0f3460;
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    color: #4a90d9;
+    min-width: 50px;
+    text-align: center;
+}
+
+.formula-bar {
+    flex: 1;
+    background: #0d1b2a;
+    border: 1px solid #0f3460;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    color: #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.formula-bar.readonly {
+    color: #8888a8;
+}
+
+/* Sheet Content (canvas + sidebar) */
+.sheet-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Canvas area — all tables rendered here, Numbers-style */
+.canvas-area {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+    background: #141428;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.canvas-table {
+    border: 1px solid #1e2a4a;
+    border-radius: 8px;
+    background: #1a1a2e;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: border-color 0.15s;
+}
+
+.canvas-table.active {
+    border-color: #4a90d9;
+    box-shadow: 0 0 0 1px rgba(74, 144, 217, 0.2);
+}
+
+.canvas-table-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: #16213e;
+    border-bottom: 1px solid #0f3460;
+    user-select: none;
+}
+
+.canvas-table-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #c0c0d8;
+}
+
+.canvas-table-delete {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.canvas-table-delete:hover {
+    color: #f44;
+}
+
+/* Sheet View (inside each table) */
+.sheet-view {
+    overflow: auto;
+    background: #1a1a2e;
+}
+
+/* Grid Table */
+.grid-table {
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.corner-cell {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    width: 44px;
+    min-width: 44px;
+    position: sticky;
+    left: 0;
+    top: 0;
+    z-index: 3;
+}
+
+.col-header {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    color: #8888a8;
+    font-weight: 500;
+    font-size: 11px;
+    text-align: center;
+    padding: 4px 2px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    user-select: none;
+}
+
+.col-header.named {
+    padding: 2px 2px;
+}
+
+.header-custom-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: #c0c0d8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.header-letter {
+    font-size: 9px;
+    color: #555;
+    margin-top: 1px;
+}
+
+.header-number {
+    font-size: 9px;
+    color: #555;
+    margin-top: 1px;
+}
+
+.row-header {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    color: #8888a8;
+    font-weight: 500;
+    font-size: 11px;
+    text-align: center;
+    padding: 2px 6px;
+    width: 44px;
+    min-width: 44px;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    user-select: none;
+}
+
+.row-header.named {
+    padding: 2px 4px;
+}
+
+/* Cell */
+.cell {
+    border: 1px solid #1e2a4a;
+    padding: 0;
+    cursor: cell;
+    overflow: hidden;
+    position: relative;
+}
+
+.cell:hover {
+    border-color: #3a5a8a;
+}
+
+.cell.selected {
+    border: 2px solid #4a90d9;
+    padding: 0;
+    box-shadow: 0 0 0 1px rgba(74, 144, 217, 0.3);
+}
+
+.cell.editing {
+    border: 2px solid #4ac9d9;
+    padding: 0;
+    box-shadow: 0 0 0 1px rgba(74, 201, 217, 0.3);
+}
+
+.cell.clipboard {
+    border: 2px dashed #4a90d9;
+    animation: clipboard-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes clipboard-pulse {
+    0%, 100% { border-color: #4a90d9; }
+    50% { border-color: #2a5a9a; }
+}
+
+.cell.drag-source {
+    opacity: 0.4;
+}
+
+.cell[draggable="true"] {
+    cursor: grab;
+}
+
+.cell[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.cell.header-cell {
+    background: #16213e;
+}
+
+.cell.header-cell .cell-value {
+    font-weight: 600;
+    color: #c0c0d8;
+}
+
+.cell-value {
+    display: block;
+    padding: 3px 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: #e0e0e0;
+}
+
+.cell-error {
+    display: block;
+    padding: 3px 6px;
+    color: #ff6b6b;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.cell-input {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    background: #0d1b2a;
+    color: #fff;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    padding: 3px 6px;
+}
+
+/* Scrollbar */
+.canvas-area::-webkit-scrollbar,
+.sheet-view::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.canvas-area::-webkit-scrollbar-track,
+.sheet-view::-webkit-scrollbar-track {
+    background: #0d1b2a;
+}
+
+.canvas-area::-webkit-scrollbar-thumb,
+.sheet-view::-webkit-scrollbar-thumb {
+    background: #2a3a5a;
+    border-radius: 5px;
+}
+
+.canvas-area::-webkit-scrollbar-thumb:hover,
+.sheet-view::-webkit-scrollbar-thumb:hover {
+    background: #3a5a8a;
+}
+
+/* Function Sidebar */
+.func-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: #121a2e;
+    border-left: 1px solid #0f3460;
+    overflow-y: auto;
+    padding: 12px 0;
+}
+
+.func-sidebar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #c0c0d8;
+    padding: 0 14px 10px;
+    border-bottom: 1px solid #0f3460;
+    margin-bottom: 6px;
+}
+
+.func-category {
+    margin-bottom: 8px;
+}
+
+.func-category-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #6878a8;
+    padding: 6px 14px 4px;
+}
+
+.func-item {
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.func-item:hover {
+    background: #1a2a4a;
+}
+
+.func-item-name {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: #4a90d9;
+}
+
+.func-item-syntax {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    color: #8888a8;
+    margin-top: 1px;
+}
+
+.func-item-desc {
+    font-size: 11px;
+    color: #6878a8;
+    margin-top: 2px;
+    line-height: 1.3;
+}
+
+.func-sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.func-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.func-sidebar::-webkit-scrollbar-thumb {
+    background: #2a3a5a;
+    border-radius: 3px;
+}
