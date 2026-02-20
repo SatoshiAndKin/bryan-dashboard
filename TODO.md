@@ -142,9 +142,9 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 - [x] cell formatting: number formats (currency, %, dates), text alignment, cell colors/font styles
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] multi-cell selection: shift-click ranges, drag-select, header click to select entire row/col
+- [x] multi-cell selection: shift-click ranges, drag-select, header click to select entire row/col
 
 - [ ] git commit
 

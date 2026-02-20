@@ -423,6 +423,17 @@ body {
     padding: 2px 2px;
 }
 
+.col-header.clickable,
+.row-header.clickable {
+    cursor: pointer;
+}
+
+.col-header.clickable:hover,
+.row-header.clickable:hover {
+    background: #1a2a4a;
+    color: #c0c0d8;
+}
+
 .header-custom-name {
     font-size: 11px;
     font-weight: 600;

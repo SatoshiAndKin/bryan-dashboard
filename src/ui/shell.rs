@@ -38,6 +38,10 @@ pub struct UndoEntry {
 pub struct UiState {
     /// (table_id, col, row)
     pub selected: Option<(TableId, u32, u32)>,
+    /// Anchor cell for shift-selection ranges
+    pub selection_anchor: Option<(TableId, u32, u32)>,
+    /// End of shift-selection range (if different from selected)
+    pub selection_end: Option<(TableId, u32, u32)>,
     pub editing: Option<(TableId, u32, u32)>,
     /// Which sheet the cell being edited belongs to
     pub editing_sheet_id: Option<SheetId>,
@@ -48,6 +52,34 @@ pub struct UiState {
     pub redo_stack: Vec<UndoEntry>,
     /// Toast messages: (message, timestamp_ms)
     pub toasts: Vec<(String, f64)>,
+}
+
+impl UiState {
+    pub fn selection_range(&self) -> Option<(TableId, u32, u32, u32, u32)> {
+        match (self.selection_anchor, self.selection_end) {
+            (Some((tid1, c1, r1)), Some((tid2, c2, r2))) if tid1 == tid2 => {
+                Some((tid1, c1.min(c2), r1.min(r2), c1.max(c2), r1.max(r2)))
+            }
+            _ => self.selected.map(|(tid, c, r)| (tid, c, r, c, r)),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn is_in_selection(&self, tid: TableId, col: u32, row: u32) -> bool {
+        if let Some((stid, min_c, min_r, max_c, max_r)) = self.selection_range() {
+            stid == tid && col >= min_c && col <= max_c && row >= min_r && row <= max_r
+        } else {
+            false
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn has_multi_selection(&self) -> bool {
+        matches!(
+            (self.selection_anchor, self.selection_end),
+            (Some((t1, c1, r1)), Some((t2, c2, r2))) if t1 == t2 && (c1 != c2 || r1 != r2)
+        )
+    }
 }
 
 #[component]
@@ -341,7 +373,19 @@ pub fn WorkbookShell() -> Element {
                             };
                             if (new_col, new_row) != (col, row) {
                                 e.prevent_default();
-                                ui.write().selected = Some((tid, new_col, new_row));
+                                let mut u = ui.write();
+                                u.selected = Some((tid, new_col, new_row));
+                                if shift {
+                                    // Extend selection
+                                    if u.selection_anchor.is_none() {
+                                        u.selection_anchor = Some((tid, col, row));
+                                    }
+                                    u.selection_end = Some((tid, new_col, new_row));
+                                } else {
+                                    // Clear multi-selection
+                                    u.selection_anchor = Some((tid, new_col, new_row));
+                                    u.selection_end = None;
+                                }
                             }
                         }
                     }
@@ -766,6 +810,8 @@ pub fn WorkbookShell() -> Element {
                                 let t_editing = editing.and_then(|(t, c, r)| if t == tid { Some((c, r)) } else { None });
                                 let t_clipboard = clipboard.and_then(|(t, c, r)| if t == tid { Some((c, r)) } else { None });
                                 let t_dragging = dragging.and_then(|(t, c, r)| if t == tid { Some((c, r)) } else { None });
+                                let t_selection_range = ui_state.selection_range()
+                                    .and_then(|(t, mc, mr, xc, xr)| if t == tid { Some((mc, mr, xc, xr)) } else { None });
                                 let t_edit_buffer = if t_editing.is_some() { edit_buffer.clone() } else { String::new() };
                                 let can_delete_table = sheet.tables.len() > 1;
                                 rsx! {
@@ -790,6 +836,7 @@ pub fn WorkbookShell() -> Element {
                                             edit_buffer: t_edit_buffer,
                                             clipboard: t_clipboard,
                                             dragging: t_dragging,
+                                            selection_range: t_selection_range,
                                             on_select_cell: move |(col, row): (u32, u32)| {
                                                 let mut u = ui.write();
                                                 if u.editing.is_some() && u.edit_buffer.starts_with('=') {
@@ -848,9 +895,65 @@ pub fn WorkbookShell() -> Element {
                                                         }
                                                     }
                                                     u.selected = Some((tid, col, row));
+                                                    u.selection_anchor = Some((tid, col, row));
+                                                    u.selection_end = None;
                                                     u.editing = None;
                                                     u.editing_sheet_id = None;
                                                 }
+                                            },
+                                            on_shift_select_cell: move |(col, row): (u32, u32)| {
+                                                let mut u = ui.write();
+                                                if let Some((atid, _, _)) = u.selection_anchor {
+                                                    if atid == tid {
+                                                        u.selection_end = Some((tid, col, row));
+                                                        u.selected = Some((tid, col, row));
+                                                    }
+                                                } else {
+                                                    u.selection_anchor = Some((tid, col, row));
+                                                    u.selected = Some((tid, col, row));
+                                                }
+                                            },
+                                            on_select_row: move |row: u32| {
+                                                let cols = {
+                                                    let wb = workbook.read();
+                                                    wb.active_sheet()
+                                                        .and_then(|s| s.table_by_id(tid))
+                                                        .map(|t| t.cols)
+                                                        .unwrap_or(1)
+                                                };
+                                                {
+                                                    let mut wb = workbook.write();
+                                                    if let Some(sheet) = wb.active_sheet_mut() {
+                                                        sheet.active_table_id = tid;
+                                                    }
+                                                }
+                                                let mut u = ui.write();
+                                                u.selected = Some((tid, 0, row));
+                                                u.selection_anchor = Some((tid, 0, row));
+                                                u.selection_end = Some((tid, cols.saturating_sub(1), row));
+                                                u.editing = None;
+                                                u.editing_sheet_id = None;
+                                            },
+                                            on_select_col: move |col: u32| {
+                                                let rows = {
+                                                    let wb = workbook.read();
+                                                    wb.active_sheet()
+                                                        .and_then(|s| s.table_by_id(tid))
+                                                        .map(|t| t.rows)
+                                                        .unwrap_or(1)
+                                                };
+                                                {
+                                                    let mut wb = workbook.write();
+                                                    if let Some(sheet) = wb.active_sheet_mut() {
+                                                        sheet.active_table_id = tid;
+                                                    }
+                                                }
+                                                let mut u = ui.write();
+                                                u.selected = Some((tid, col, 0));
+                                                u.selection_anchor = Some((tid, col, 0));
+                                                u.selection_end = Some((tid, col, rows.saturating_sub(1)));
+                                                u.editing = None;
+                                                u.editing_sheet_id = None;
                                             },
                                             on_start_edit: move |(col, row): (u32, u32)| {
                                                 let (source, sid) = {

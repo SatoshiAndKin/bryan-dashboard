@@ -16,6 +16,7 @@ pub fn CellView(
     height: f32,
     cell_style: String,
     on_select: EventHandler<()>,
+    on_shift_select: EventHandler<()>,
     on_start_edit: EventHandler<()>,
     on_edit_change: EventHandler<String>,
     on_commit: EventHandler<()>,
@@ -50,9 +51,13 @@ pub fn CellView(
             class,
             style: "{base_style}",
             draggable: if has_content && !is_editing { "true" } else { "false" },
-            onclick: move |_| {
+            onclick: move |e| {
                 if !is_editing {
-                    on_select.call(());
+                    if e.modifiers().shift() {
+                        on_shift_select.call(());
+                    } else {
+                        on_select.call(());
+                    }
                 }
             },
             ondoubleclick: move |_| {
