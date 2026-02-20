@@ -1,4 +1,8 @@
 use serde::{Deserialize, Serialize};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::JsFuture;
 
 /// EIP-6963 provider info (from eip6963:announceProvider events)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -26,9 +30,6 @@ pub async fn eip6963_request(
     method: &str,
     params: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    use wasm_bindgen::prelude::*;
-    use wasm_bindgen_futures::JsFuture;
-
     let js_code = format!(
         r#"
         (async function() {{
@@ -61,8 +62,6 @@ pub async fn eip6963_request(
 /// Stores discovered providers in `window.__eip6963_providers` for later use.
 #[cfg(target_arch = "wasm32")]
 pub fn discover_providers() -> Vec<WalletProviderInfo> {
-    use wasm_bindgen::prelude::*;
-
     let js_code = r#"
     (function() {
         window.__eip6963_providers = window.__eip6963_providers || [];
@@ -128,8 +127,6 @@ pub fn discover_providers() -> Vec<WalletProviderInfo> {
 /// Fallback: check if window.ethereum exists (legacy EIP-1193)
 #[cfg(target_arch = "wasm32")]
 pub fn has_legacy_provider() -> bool {
-    use wasm_bindgen::prelude::*;
-
     js_sys::eval("typeof window.ethereum !== 'undefined'")
         .ok()
         .and_then(|v| v.as_bool())
@@ -142,9 +139,6 @@ pub async fn legacy_provider_request(
     method: &str,
     params: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    use wasm_bindgen::prelude::*;
-    use wasm_bindgen_futures::JsFuture;
-
     let js_code = format!(
         r#"
         (async function() {{

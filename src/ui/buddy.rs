@@ -1,8 +1,11 @@
 use dioxus::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::Closure;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
 
 #[cfg(target_arch = "wasm32")]
-type AnimCallback =
-    std::rc::Rc<std::cell::RefCell<Option<wasm_bindgen::prelude::Closure<dyn FnMut(f64)>>>>;
+type AnimCallback = std::rc::Rc<std::cell::RefCell<Option<Closure<dyn FnMut(f64)>>>>;
 
 #[component]
 pub fn BuddyCharacter() -> Element {
@@ -37,9 +40,6 @@ fn start_buddy_loop(
     mut mouse: Signal<(f64, f64)>,
     mut vel: Signal<(f64, f64)>,
 ) {
-    use wasm_bindgen::prelude::Closure;
-    use wasm_bindgen::JsCast;
-
     let window = match web_sys::window() {
         Some(w) => w,
         None => return,

@@ -5,5 +5,4 @@ pub mod func_sidebar;
 pub mod grid;
 pub mod settings_pane;
 pub mod shell;
-pub mod starfield;
 pub mod tabs;

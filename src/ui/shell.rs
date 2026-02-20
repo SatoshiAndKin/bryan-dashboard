@@ -1,5 +1,13 @@
 use dioxus::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::Closure;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::JsFuture;
 
+#[cfg(target_arch = "wasm32")]
+use crate::eth::parse_block_head;
 use crate::eth::BlockHead;
 use crate::formula::graph::{recalculate_table, recalculate_table_with_ctx};
 use crate::model::cell::{col_index_to_label, NumberFormat, TextAlign};
@@ -14,7 +22,6 @@ use crate::ui::confirm_modal::ConfirmModal;
 use crate::ui::func_sidebar::FuncSidebar;
 use crate::ui::grid::SheetView;
 use crate::ui::settings_pane::SettingsPane;
-use crate::ui::starfield::Starfield;
 use crate::ui::tabs::SheetTabsPanel;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -235,7 +242,6 @@ pub fn WorkbookShell() -> Element {
             onclick: move |_| {
                 #[cfg(target_arch = "wasm32")]
                 {
-                    use wasm_bindgen::JsCast;
                     if let Some(el) = web_sys::window()
                         .and_then(|w| w.document())
                         .and_then(|d| d.query_selector(".workbook-shell").ok().flatten())
@@ -348,6 +354,56 @@ pub fn WorkbookShell() -> Element {
 
                 if ctrl { return; }
 
+                // --- Enter/Escape while editing (fallback if cell input doesn't catch it) ---
+                if is_editing && (e.key() == Key::Enter || e.key() == Key::Escape) {
+                    e.prevent_default();
+                    let u = ui.read();
+                    if let Some((etid, col, row)) = u.editing {
+                        if e.key() == Key::Enter {
+                            let new_source = u.edit_buffer.clone();
+                            let esid = u.editing_sheet_id;
+                            drop(u);
+                            let old_source = {
+                                let wb = workbook.read();
+                                let sid = esid.unwrap_or(wb.active_sheet_id);
+                                wb.sheets.iter().find(|s| s.id == sid)
+                                    .and_then(|s| s.table_by_id(etid))
+                                    .and_then(|t| t.cells.get(&(col, row)))
+                                    .map(|c| c.source.clone())
+                                    .unwrap_or_default()
+                            };
+                            {
+                                let mut wb = workbook.write();
+                                let sid = esid.unwrap_or(wb.active_sheet_id);
+                                if let Some(sheet) = wb.sheets.iter_mut().find(|s| s.id == sid) {
+                                    if let Some(table) = sheet.table_by_id_mut(etid) {
+                                        table.set_cell_source(col, row, new_source.clone());
+                                        recalculate_table(table);
+                                    }
+                                    sheet.recalculate_dependents(etid);
+                                }
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                            }
+                            let mut u = ui.write();
+                            u.editing = None;
+                            u.editing_sheet_id = None;
+                            if old_source != new_source {
+                                u.undo_stack.push(UndoEntry {
+                                    table_id: etid, col, row,
+                                    old_source, new_source,
+                                });
+                                u.redo_stack.clear();
+                            }
+                        } else {
+                            drop(u);
+                            let mut u = ui.write();
+                            u.editing = None;
+                            u.editing_sheet_id = None;
+                        }
+                    }
+                    return;
+                }
+
                 // --- Non-editing navigation ---
                 let selected_cell = if !is_editing { ui.read().selected } else { None };
                 if let Some((tid, col, row)) = selected_cell {
@@ -434,7 +490,9 @@ pub fn WorkbookShell() -> Element {
                     }
             },
 
-            Starfield {}
+            div { class: "starfield-layer stars-sm" }
+            div { class: "starfield-layer stars-md" }
+            div { class: "starfield-layer stars-lg" }
             BuddyCharacter {}
 
             // Sheet tabs (top bar) + last saved timestamp
@@ -1285,7 +1343,6 @@ pub fn WorkbookShell() -> Element {
 /// Download a text file in the browser
 #[cfg(target_arch = "wasm32")]
 fn download_file(filename: &str, content: &str) {
-    use wasm_bindgen::JsCast;
     let window = match web_sys::window() {
         Some(w) => w,
         None => return,
@@ -1324,9 +1381,6 @@ fn download_file(filename: &str, content: &str) {
 /// Trigger a file input dialog for import
 #[cfg(target_arch = "wasm32")]
 fn trigger_file_import(mut workbook: Signal<crate::model::WorkbookState>, mut ui: Signal<UiState>) {
-    use wasm_bindgen::prelude::Closure;
-    use wasm_bindgen::JsCast;
-
     let window = match web_sys::window() {
         Some(w) => w,
         None => return,
@@ -1422,10 +1476,6 @@ async fn connect_eth_ws(
     chain_id: u64,
     mut block_heads: Signal<std::collections::HashMap<u64, BlockHead>>,
 ) {
-    use crate::eth::parse_block_head;
-    use wasm_bindgen::prelude::Closure;
-    use wasm_bindgen::JsCast;
-
     let ws = match web_sys::WebSocket::new(url) {
         Ok(ws) => ws,
         Err(e) => {
@@ -1487,8 +1537,6 @@ async fn poll_eth_http(
     interval_secs: u32,
     mut block_heads: Signal<std::collections::HashMap<u64, BlockHead>>,
 ) {
-    use crate::eth::parse_block_head;
-
     let body = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -1517,9 +1565,6 @@ async fn poll_eth_http(
 
 #[cfg(target_arch = "wasm32")]
 async fn fetch_json_rpc(url: &str, body: &str) -> Result<serde_json::Value, String> {
-    use wasm_bindgen::JsCast;
-    use wasm_bindgen_futures::JsFuture;
-
     let window = web_sys::window().ok_or("no window")?;
 
     let opts = web_sys::RequestInit::new();

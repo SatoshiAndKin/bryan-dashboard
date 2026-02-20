@@ -351,7 +351,8 @@ body {
     flex-shrink: 0;
 }
 
-.starfield {
+/* CSS Starfield — three layers of stars with twinkling animation */
+.starfield-layer {
     position: fixed;
     top: 0;
     left: 0;
@@ -360,6 +361,75 @@ body {
     pointer-events: none;
     z-index: 0;
     overflow: hidden;
+}
+
+.starfield-layer.stars-sm {
+    background-image:
+        radial-gradient(1px 1px at 50px 80px, rgba(200,210,240,0.6), transparent),
+        radial-gradient(1px 1px at 180px 40px, rgba(190,200,230,0.5), transparent),
+        radial-gradient(1px 1px at 320px 150px, rgba(210,215,240,0.4), transparent),
+        radial-gradient(1px 1px at 470px 90px, rgba(195,205,235,0.55), transparent),
+        radial-gradient(1px 1px at 600px 200px, rgba(200,210,240,0.45), transparent),
+        radial-gradient(1px 1px at 750px 60px, rgba(185,195,225,0.5), transparent),
+        radial-gradient(1px 1px at 900px 170px, rgba(210,220,245,0.4), transparent),
+        radial-gradient(1px 1px at 100px 300px, rgba(200,208,235,0.5), transparent),
+        radial-gradient(1px 1px at 250px 350px, rgba(195,205,230,0.55), transparent),
+        radial-gradient(1px 1px at 400px 280px, rgba(205,215,240,0.45), transparent),
+        radial-gradient(1px 1px at 550px 330px, rgba(190,200,230,0.5), transparent),
+        radial-gradient(1px 1px at 700px 380px, rgba(200,210,240,0.4), transparent),
+        radial-gradient(1px 1px at 850px 310px, rgba(210,218,245,0.5), transparent),
+        radial-gradient(1px 1px at 1000px 290px, rgba(195,205,235,0.55), transparent),
+        radial-gradient(1px 1px at 130px 450px, rgba(200,210,240,0.4), transparent),
+        radial-gradient(1px 1px at 350px 500px, rgba(185,198,225,0.5), transparent),
+        radial-gradient(1px 1px at 520px 470px, rgba(210,215,240,0.45), transparent),
+        radial-gradient(1px 1px at 680px 520px, rgba(200,210,240,0.55), transparent),
+        radial-gradient(1px 1px at 820px 480px, rgba(195,205,235,0.4), transparent),
+        radial-gradient(1px 1px at 960px 440px, rgba(205,215,240,0.5), transparent);
+    background-size: 1050px 570px;
+    animation: twinkle-sm 8s ease-in-out infinite alternate;
+}
+
+.starfield-layer.stars-md {
+    background-image:
+        radial-gradient(1.5px 1.5px at 120px 160px, rgba(220,225,250,0.7), transparent),
+        radial-gradient(1.5px 1.5px at 380px 80px, rgba(210,220,245,0.65), transparent),
+        radial-gradient(1.5px 1.5px at 640px 240px, rgba(225,230,255,0.6), transparent),
+        radial-gradient(1.5px 1.5px at 200px 400px, rgba(215,225,248,0.7), transparent),
+        radial-gradient(1.5px 1.5px at 500px 350px, rgba(220,228,250,0.55), transparent),
+        radial-gradient(1.5px 1.5px at 780px 130px, rgba(210,220,245,0.65), transparent),
+        radial-gradient(1.5px 1.5px at 920px 380px, rgba(225,230,255,0.6), transparent),
+        radial-gradient(1.5px 1.5px at 60px 520px, rgba(215,222,248,0.7), transparent),
+        radial-gradient(1.5px 1.5px at 440px 480px, rgba(220,225,250,0.55), transparent),
+        radial-gradient(1.5px 1.5px at 700px 500px, rgba(210,220,245,0.65), transparent);
+    background-size: 980px 560px;
+    animation: twinkle-md 6s ease-in-out infinite alternate;
+}
+
+.starfield-layer.stars-lg {
+    background-image:
+        radial-gradient(2px 2px at 250px 200px, rgba(240,235,220,0.9), transparent),
+        radial-gradient(2px 2px at 700px 150px, rgba(235,240,255,0.85), transparent),
+        radial-gradient(2px 2px at 450px 420px, rgba(240,230,200,0.8), transparent),
+        radial-gradient(2px 2px at 150px 350px, rgba(230,235,255,0.85), transparent),
+        radial-gradient(2px 2px at 850px 300px, rgba(240,220,190,0.75), transparent),
+        radial-gradient(2.5px 2.5px at 550px 100px, rgba(200,195,240,0.8), transparent);
+    background-size: 950px 520px;
+    animation: twinkle-lg 5s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle-sm {
+    0% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+@keyframes twinkle-md {
+    0% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+@keyframes twinkle-lg {
+    0% { opacity: 0.7; }
+    100% { opacity: 1; }
 }
 
 .canvas-area > .canvas-table {

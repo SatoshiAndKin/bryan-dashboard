@@ -1,5 +1,9 @@
 use dioxus::prelude::*;
 use std::collections::HashMap;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::JsFuture;
 
 use crate::eth::BlockHead;
 use crate::model::settings::{AppSettings, RpcEntry};
@@ -283,9 +287,6 @@ pub fn SettingsPane(
 
 #[cfg(target_arch = "wasm32")]
 async fn test_rpc_chain_id(entry: &RpcEntry) -> RpcTestResult {
-    use wasm_bindgen::JsCast;
-    use wasm_bindgen_futures::JsFuture;
-
     let url = match entry.primary_url() {
         Some(u) => u,
         None => return RpcTestResult::Error("No URL configured".into()),
