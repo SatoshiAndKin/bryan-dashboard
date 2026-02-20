@@ -210,7 +210,8 @@ impl Parser {
                         }
                         Ok(Expr::CellRef(cell_ref))
                     } else {
-                        Err("#REF!".to_string())
+                        // Not a cell ref — treat as a named column/row reference
+                        Ok(Expr::NamedRef(name))
                     }
                 }
             }

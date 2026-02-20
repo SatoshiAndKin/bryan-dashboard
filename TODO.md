@@ -8,10 +8,6 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 - [ ] git commit
 
-- [ ] window.ethereum works for using a wallet provider, but it is fragile. there is a multi-provider ERC that we should be using instead. i really dislike javascript, so we should keep as much of this logic in our rust/alloy code as possible
-
-- [ ] git commit
-
 - [ ] pretty row/col names are showing around the table, but they aren't being shown in the equations. they also don't seem usable in the equations (i always see #ref). write a test to cover these working
 
 - [ ] git commit

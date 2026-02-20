@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::ast::Expr;
-use super::eval::{evaluate, EvalContext};
+use super::eval::{evaluate_at, EvalContext};
 use super::parser::parse_formula;
 use crate::eth::BlockHead;
 use crate::model::cell::{CellRef, CellValue};
@@ -35,6 +35,7 @@ fn extract_local_deps(expr: &Expr) -> Vec<CellRef> {
                 deps.extend(extract_local_deps(arg));
             }
         }
+        Expr::NamedRef(_) => {} // resolved dynamically at eval time
     }
     deps
 }
@@ -103,7 +104,7 @@ pub fn recalculate_table_with_ctx(
                     ctx.block_head = block_head;
                     ctx.balance_cache = balance_cache;
                     ctx.pending_lookups = pending_lookups;
-                    let val = evaluate(expr, &ctx);
+                    let val = evaluate_at(expr, &ctx, Some(key));
                     if let Some(cell) = table.cells.get_mut(&key) {
                         cell.computed = val;
                     }
@@ -184,5 +185,159 @@ fn topo_sort(
             .cloned()
             .collect();
         Err(cycle)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::cell::CellValue;
+    use crate::model::table::TableModel;
+
+    fn make_table(rows: u32, cols: u32) -> TableModel {
+        TableModel::new(1, "T".to_string(), rows, cols)
+    }
+
+    #[test]
+    fn test_topo_sort_linear() {
+        let nodes = vec![(0, 0), (0, 1), (0, 2)];
+        let mut deps = HashMap::new();
+        deps.insert((0, 1), vec![(0, 0)]);
+        deps.insert((0, 2), vec![(0, 1)]);
+        let order = topo_sort(&nodes, &deps).unwrap();
+        let pos0 = order.iter().position(|&k| k == (0, 0)).unwrap();
+        let pos1 = order.iter().position(|&k| k == (0, 1)).unwrap();
+        let pos2 = order.iter().position(|&k| k == (0, 2)).unwrap();
+        assert!(pos0 < pos1);
+        assert!(pos1 < pos2);
+    }
+
+    #[test]
+    fn test_topo_sort_cycle() {
+        let nodes = vec![(0, 0), (0, 1)];
+        let mut deps = HashMap::new();
+        deps.insert((0, 0), vec![(0, 1)]);
+        deps.insert((0, 1), vec![(0, 0)]);
+        let result = topo_sort(&nodes, &deps);
+        assert!(result.is_err());
+        let cycle = result.unwrap_err();
+        assert_eq!(cycle.len(), 2);
+    }
+
+    #[test]
+    fn test_topo_sort_no_deps() {
+        let nodes = vec![(0, 0), (1, 0), (2, 0)];
+        let deps = HashMap::new();
+        let order = topo_sort(&nodes, &deps).unwrap();
+        assert_eq!(order.len(), 3);
+    }
+
+    #[test]
+    fn test_topo_sort_diamond() {
+        // A -> B, A -> C, B -> D, C -> D
+        let nodes = vec![(0, 0), (1, 0), (2, 0), (3, 0)];
+        let mut deps = HashMap::new();
+        deps.insert((1, 0), vec![(0, 0)]);
+        deps.insert((2, 0), vec![(0, 0)]);
+        deps.insert((3, 0), vec![(1, 0), (2, 0)]);
+        let order = topo_sort(&nodes, &deps).unwrap();
+        let pos_a = order.iter().position(|&k| k == (0, 0)).unwrap();
+        let pos_b = order.iter().position(|&k| k == (1, 0)).unwrap();
+        let pos_c = order.iter().position(|&k| k == (2, 0)).unwrap();
+        let pos_d = order.iter().position(|&k| k == (3, 0)).unwrap();
+        assert!(pos_a < pos_b);
+        assert!(pos_a < pos_c);
+        assert!(pos_b < pos_d);
+        assert!(pos_c < pos_d);
+    }
+
+    #[test]
+    fn test_parse_literal_empty() {
+        assert_eq!(parse_literal(""), CellValue::Empty);
+        assert_eq!(parse_literal("  "), CellValue::Empty);
+    }
+
+    #[test]
+    fn test_parse_literal_number() {
+        assert_eq!(parse_literal("42"), CellValue::Number(42.0));
+        assert_eq!(parse_literal("3.14"), CellValue::Number(3.14));
+        assert_eq!(parse_literal(" -1 "), CellValue::Number(-1.0));
+    }
+
+    #[test]
+    fn test_parse_literal_text() {
+        assert_eq!(parse_literal("hello"), CellValue::Text("hello".to_string()));
+        assert_eq!(
+            parse_literal("abc123"),
+            CellValue::Text("abc123".to_string())
+        );
+    }
+
+    #[test]
+    fn test_recalculate_with_named_ref() {
+        let mut t = TableModel::new(1, "T".to_string(), 3, 3);
+        t.header_rows = 1;
+        t.set_cell_source(0, 0, "X".to_string());
+        t.set_cell_source(1, 0, "Y".to_string());
+        t.set_cell_source(2, 0, "Sum".to_string());
+        t.set_cell_source(0, 1, "10".to_string());
+        t.set_cell_source(1, 1, "20".to_string());
+        t.set_cell_source(2, 1, "=X+Y".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(2, 1)].computed, CellValue::Number(30.0));
+    }
+
+    #[test]
+    fn test_recalculate_preserves_non_formula() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "hello".to_string());
+        t.set_cell_source(0, 1, "42".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 0)].computed,
+            CellValue::Text("hello".to_string())
+        );
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(42.0));
+    }
+
+    #[test]
+    fn test_recalculate_parse_error() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=+".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(t.cells[&(0, 0)].computed, CellValue::Error(_)));
+    }
+
+    #[test]
+    fn test_self_referencing_formula() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=A1".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(t.cells[&(0, 0)].computed, CellValue::Error(_)));
+    }
+
+    #[test]
+    fn test_three_cell_cycle() {
+        let mut t = make_table(3, 1);
+        t.set_cell_source(0, 0, "=A3".to_string());
+        t.set_cell_source(0, 1, "=A1".to_string());
+        t.set_cell_source(0, 2, "=A2".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(t.cells[&(0, 0)].computed, CellValue::Error(_)));
+        assert!(matches!(t.cells[&(0, 1)].computed, CellValue::Error(_)));
+        assert!(matches!(t.cells[&(0, 2)].computed, CellValue::Error(_)));
+    }
+
+    #[test]
+    fn test_external_dep_not_tracked() {
+        // Cross-table refs shouldn't cause cycle detection issues
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=OtherTable::A1".to_string());
+        recalculate_table(&mut t);
+        // Should get #REF! (no sibling), not a cycle error
+        assert_eq!(
+            t.cells[&(0, 0)].computed,
+            CellValue::Error("#REF!".to_string())
+        );
     }
 }

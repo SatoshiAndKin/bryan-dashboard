@@ -12,6 +12,9 @@ pub enum Expr {
     BinOp(Box<Expr>, BinOp, Box<Expr>),
     UnaryNeg(Box<Expr>),
     FuncCall(String, Vec<Expr>),
+    /// A named column reference like "Price" that resolves to a column by header name.
+    /// (name, row) — the row comes from the context of the cell containing the formula.
+    NamedRef(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
