@@ -613,3 +613,123 @@ body {
     background: #a03030;
     border-color: #c04040;
 }
+
+.modal-btn.confirm.save {
+    background: #1a6a3a;
+    border-color: #2a8a4a;
+}
+
+.modal-btn.confirm.save:hover {
+    background: #2a8a4a;
+    border-color: #3aaa5a;
+}
+
+/* Settings Pane */
+.settings-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.settings-dialog {
+    background: #1a1a2e;
+    border: 1px solid #0f3460;
+    border-radius: 10px;
+    padding: 24px 28px;
+    min-width: 400px;
+    max-width: 520px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.settings-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #e0e0e0;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #0f3460;
+}
+
+.settings-field {
+    margin-bottom: 16px;
+}
+
+.settings-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: #8888a8;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.settings-input {
+    width: 100%;
+    background: #0d1b2a;
+    border: 1px solid #0f3460;
+    color: #e0e0e0;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 5px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.settings-input:focus {
+    border-color: #4a90d9;
+}
+
+.settings-input.short {
+    width: 100px;
+}
+
+.settings-hint {
+    display: block;
+    font-size: 11px;
+    color: #6878a8;
+    margin-top: 4px;
+}
+
+.settings-block-info {
+    background: #0d1b2a;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+}
+
+.block-info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 12px;
+}
+
+.block-info-label {
+    color: #8888a8;
+}
+
+.block-info-value {
+    color: #e0e0e0;
+    font-weight: 500;
+}
+
+.block-info-value.mono {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 11px;
+}
+
+.settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #0f3460;
+}

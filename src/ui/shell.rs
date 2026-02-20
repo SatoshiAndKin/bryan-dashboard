@@ -1,13 +1,18 @@
 use dioxus::prelude::*;
 
+use crate::eth::BlockHead;
 use crate::formula::graph::recalculate_table;
 use crate::model::cell::col_index_to_label;
+use crate::model::settings::AppSettings;
 use crate::model::sheet::SheetId;
 use crate::model::table::TableId;
-use crate::persistence::{load_workbook, save_workbook};
+#[cfg(target_arch = "wasm32")]
+use crate::persistence::{export_workbook, import_workbook};
+use crate::persistence::{load_settings, load_workbook, save_settings, save_workbook};
 use crate::ui::confirm_modal::ConfirmModal;
 use crate::ui::func_sidebar::FuncSidebar;
 use crate::ui::grid::SheetView;
+use crate::ui::settings_pane::SettingsPane;
 use crate::ui::tabs::SheetTabsPanel;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,6 +46,22 @@ pub fn WorkbookShell() -> Element {
     });
     let mut ui = use_signal(UiState::default);
     let mut pending_delete: Signal<Option<PendingDelete>> = use_signal(|| None);
+    let mut settings = use_signal(load_settings);
+    let mut show_settings = use_signal(|| false);
+    let block_head: Signal<Option<BlockHead>> = use_signal(|| None);
+
+    // Ethereum connection effect: reacts to settings changes
+    #[cfg(target_arch = "wasm32")]
+    {
+        let settings_clone = settings.read().clone();
+        use_effect(move || {
+            let s = settings_clone.clone();
+            let bh = block_head;
+            spawn(async move {
+                connect_eth(s, bh).await;
+            });
+        });
+    }
 
     let wb = workbook.read();
     let ui_state = ui.read();
@@ -185,6 +206,33 @@ pub fn WorkbookShell() -> Element {
 
             // Toolbar
             div { class: "sheet-toolbar",
+                button {
+                    class: "toolbar-btn",
+                    onclick: move |_| show_settings.set(true),
+                    "Settings"
+                }
+                button {
+                    class: "toolbar-btn",
+                    onclick: move |_| {
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            let wb = workbook.read();
+                            if let Some(json) = export_workbook(&wb) {
+                                download_file("workbook.json", &json);
+                            }
+                        }
+                    },
+                    "Export"
+                }
+                button {
+                    class: "toolbar-btn",
+                    onclick: move |_| {
+                        #[cfg(target_arch = "wasm32")]
+                        trigger_file_import(workbook);
+                    },
+                    "Import"
+                }
+                span { class: "toolbar-separator" }
                 // Table management (within active sheet)
                 button {
                     class: "toolbar-btn",
@@ -577,6 +625,22 @@ pub fn WorkbookShell() -> Element {
                 }
             }
 
+            // Settings pane
+            if show_settings() {
+                SettingsPane {
+                    settings: settings.read().clone(),
+                    block_head: block_head.read().clone(),
+                    on_save: move |new_settings: AppSettings| {
+                        save_settings(&new_settings);
+                        settings.set(new_settings);
+                        show_settings.set(false);
+                    },
+                    on_close: move |_: ()| {
+                        show_settings.set(false);
+                    },
+                }
+            }
+
             // Confirmation modal
             if let Some(pd) = pending_delete() {
                 {
@@ -659,4 +723,258 @@ pub fn WorkbookShell() -> Element {
             }
         }
     }
+}
+
+/// Download a text file in the browser
+#[cfg(target_arch = "wasm32")]
+fn download_file(filename: &str, content: &str) {
+    use wasm_bindgen::JsCast;
+    let window = match web_sys::window() {
+        Some(w) => w,
+        None => return,
+    };
+    let document = match window.document() {
+        Some(d) => d,
+        None => return,
+    };
+
+    let parts = js_sys::Array::new();
+    parts.push(&wasm_bindgen::JsValue::from_str(content));
+    let opts = web_sys::BlobPropertyBag::new();
+    opts.set_type("application/json");
+    let blob = match web_sys::Blob::new_with_str_sequence_and_options(&parts, &opts) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    let url = match web_sys::Url::create_object_url_with_blob(&blob) {
+        Ok(u) => u,
+        Err(_) => return,
+    };
+
+    let a: web_sys::HtmlAnchorElement = match document.create_element("a") {
+        Ok(el) => match el.dyn_into() {
+            Ok(a) => a,
+            Err(_) => return,
+        },
+        Err(_) => return,
+    };
+    a.set_href(&url);
+    a.set_download(filename);
+    a.click();
+    let _ = web_sys::Url::revoke_object_url(&url);
+}
+
+/// Trigger a file input dialog for import
+#[cfg(target_arch = "wasm32")]
+fn trigger_file_import(mut workbook: Signal<crate::model::WorkbookState>) {
+    use wasm_bindgen::prelude::Closure;
+    use wasm_bindgen::JsCast;
+
+    let window = match web_sys::window() {
+        Some(w) => w,
+        None => return,
+    };
+    let document = match window.document() {
+        Some(d) => d,
+        None => return,
+    };
+
+    let input: web_sys::HtmlInputElement = match document.create_element("input") {
+        Ok(el) => match el.dyn_into() {
+            Ok(i) => i,
+            Err(_) => return,
+        },
+        Err(_) => return,
+    };
+    input.set_type("file");
+    input.set_accept(".json");
+
+    let input_clone = input.clone();
+    let onchange = Closure::<dyn FnMut()>::new(move || {
+        let files = match input_clone.files() {
+            Some(f) => f,
+            None => return,
+        };
+        let file = match files.get(0) {
+            Some(f) => f,
+            None => return,
+        };
+        let reader = match web_sys::FileReader::new() {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+        let _ = reader.read_as_text(&file);
+        let reader_clone = reader.clone();
+        let onload = Closure::<dyn FnMut()>::new(move || {
+            let result = match reader_clone.result() {
+                Ok(r) => r,
+                Err(_) => return,
+            };
+            let text = match result.as_string() {
+                Some(t) => t,
+                None => return,
+            };
+            match import_workbook(&text) {
+                Ok(mut wb) => {
+                    for sheet in &mut wb.sheets {
+                        sheet.recalculate_all();
+                    }
+                    save_workbook(&wb);
+                    workbook.set(wb);
+                }
+                Err(e) => {
+                    web_sys::console::error_1(&format!("Import error: {e}").into());
+                }
+            }
+        });
+        reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+        onload.forget();
+    });
+    input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
+    onchange.forget();
+    input.click();
+}
+
+/// Connect to Ethereum RPC and update block_head signal
+#[cfg(target_arch = "wasm32")]
+async fn connect_eth(settings: AppSettings, mut block_head: Signal<Option<BlockHead>>) {
+    if !settings.has_rpc() {
+        block_head.set(None);
+        return;
+    }
+
+    if settings.is_websocket() {
+        connect_eth_ws(&settings.rpc_url, block_head).await;
+    } else {
+        poll_eth_http(&settings.rpc_url, settings.poll_interval_secs, block_head).await;
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn connect_eth_ws(url: &str, mut block_head: Signal<Option<BlockHead>>) {
+    use crate::eth::parse_block_head;
+    use wasm_bindgen::prelude::Closure;
+    use wasm_bindgen::JsCast;
+
+    let ws = match web_sys::WebSocket::new(url) {
+        Ok(ws) => ws,
+        Err(e) => {
+            web_sys::console::error_1(&format!("WebSocket connect failed: {:?}", e).into());
+            return;
+        }
+    };
+    ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+
+    // On open: send eth_subscribe for newHeads
+    let ws_clone = ws.clone();
+    let onopen = Closure::<dyn FnMut()>::new(move || {
+        let subscribe_msg = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "eth_subscribe",
+            "params": ["newHeads"]
+        });
+        let _ = ws_clone.send_with_str(&subscribe_msg.to_string());
+    });
+    ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
+    onopen.forget();
+
+    // On message: parse subscription notification
+    let onmessage =
+        Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |e: web_sys::MessageEvent| {
+            if let Some(text) = e.data().as_string() {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
+                    // Subscription notifications come as {"params": {"result": {...}}}
+                    if let Some(result) = val.get("params").and_then(|p| p.get("result")) {
+                        if let Some(bh) = parse_block_head(result) {
+                            block_head.set(Some(bh));
+                        }
+                    }
+                    // Initial subscription response or other messages — try result directly
+                    if let Some(result) = val.get("result") {
+                        if let Some(bh) = parse_block_head(result) {
+                            block_head.set(Some(bh));
+                        }
+                    }
+                }
+            }
+        });
+    ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+    onmessage.forget();
+
+    let onerror = Closure::<dyn FnMut(web_sys::ErrorEvent)>::new(move |e: web_sys::ErrorEvent| {
+        web_sys::console::error_1(&format!("WebSocket error: {:?}", e.message()).into());
+    });
+    ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+    onerror.forget();
+
+    // Keep alive — don't drop. The closures keep a reference to the ws.
+    // We use a pending future that never resolves to keep the task alive.
+    let (_, rx) = futures_channel::oneshot::channel::<()>();
+    let _ = rx.await;
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn poll_eth_http(url: &str, interval_secs: u32, mut block_head: Signal<Option<BlockHead>>) {
+    use crate::eth::parse_block_head;
+
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "eth_getBlockByNumber",
+        "params": ["latest", false]
+    })
+    .to_string();
+
+    loop {
+        match fetch_json_rpc(url, &body).await {
+            Ok(val) => {
+                if let Some(result) = val.get("result") {
+                    if let Some(bh) = parse_block_head(result) {
+                        block_head.set(Some(bh));
+                    }
+                }
+            }
+            Err(e) => {
+                web_sys::console::error_1(&format!("HTTP poll error: {e}").into());
+            }
+        }
+        gloo_timers::future::sleep(std::time::Duration::from_secs(interval_secs as u64)).await;
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn fetch_json_rpc(url: &str, body: &str) -> Result<serde_json::Value, String> {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen_futures::JsFuture;
+
+    let window = web_sys::window().ok_or("no window")?;
+
+    let opts = web_sys::RequestInit::new();
+    opts.set_method("POST");
+    opts.set_body(&wasm_bindgen::JsValue::from_str(body));
+
+    let request =
+        web_sys::Request::new_with_str_and_init(url, &opts).map_err(|e| format!("{:?}", e))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("{:?}", e))?;
+
+    let resp_val = JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+
+    let resp: web_sys::Response = resp_val.dyn_into().map_err(|_| "not a Response")?;
+    let json_promise = resp.json().map_err(|e| format!("{:?}", e))?;
+    let json_val = JsFuture::from(json_promise)
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+
+    let text = js_sys::JSON::stringify(&json_val)
+        .map_err(|e| format!("{:?}", e))?
+        .as_string()
+        .ok_or("stringify failed")?;
+
+    serde_json::from_str(&text).map_err(|e| format!("{e}"))
 }

@@ -11,8 +11,36 @@ alloy = { version = "1.7.3", default-features = false }
 dioxus = { version = "0.7.1", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-web-sys = { version = "0.3", features = ["Window", "Storage", "console"] }
-wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Storage",
+    "console",
+    "WebSocket",
+    "BinaryType",
+    "MessageEvent",
+    "CloseEvent",
+    "ErrorEvent",
+    "Blob",
+    "BlobPropertyBag",
+    "Url",
+    "Document",
+    "HtmlAnchorElement",
+    "HtmlInputElement",
+    "FileReader",
+    "FileList",
+    "File",
+    "ProgressEvent",
+    "EventTarget",
+    "Request",
+    "RequestInit",
+    "Response",
+    "Headers",
+] }
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+gloo-timers = { version = "0.3", features = ["futures"] }
+futures-channel = "0.3"
 
 [features]
 default = ["web"]

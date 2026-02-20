@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+mod eth;
 mod formula;
 mod model;
 mod persistence;
