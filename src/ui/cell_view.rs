@@ -71,7 +71,9 @@ pub fn CellView(
                 input {
                     class: "cell-input",
                     value: "{edit_buffer}",
-                    autofocus: true,
+                    onmounted: move |evt| async move {
+                        let _ = evt.set_focus(true).await;
+                    },
                     oninput: move |e| on_edit_change.call(e.value()),
                     onkeydown: move |e| {
                         if e.key() == Key::Enter {

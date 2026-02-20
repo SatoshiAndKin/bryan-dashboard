@@ -9,6 +9,10 @@ use crate::formula::rewrite::{
 
 pub type TableId = u64;
 
+fn default_one() -> u32 {
+    1
+}
+
 fn serialize_cells<S: Serializer>(
     cells: &HashMap<(u32, u32), CellModel>,
     serializer: S,
@@ -42,16 +46,19 @@ pub struct TableModel {
     pub canvas_x: f32,
     #[serde(default)]
     pub canvas_y: f32,
-    /// Optional header row names (row 0 = first header). Empty string = use default.
+    /// Number of header rows at the top (their cell values name the columns)
+    #[serde(default = "default_one")]
+    pub header_rows: u32,
+    /// Number of header columns on the left (their cell values name the rows)
+    #[serde(default = "default_one")]
+    pub header_cols: u32,
+    /// Number of footer rows at the bottom (e.g. TOTAL rows)
     #[serde(default)]
-    pub header_row: bool,
-    /// Optional header column. If true, column 0 is treated as a label column.
-    #[serde(default)]
-    pub header_col: bool,
-    /// Custom column names (from header row content)
+    pub footer_rows: u32,
+    /// Custom column names (override, from header row content)
     #[serde(default)]
     pub col_names: HashMap<u32, String>,
-    /// Custom row names (from header col content)
+    /// Custom row names (override, from header col content)
     #[serde(default)]
     pub row_names: HashMap<u32, String>,
 }
@@ -68,11 +75,28 @@ impl TableModel {
             row_heights: HashMap::new(),
             canvas_x: 0.0,
             canvas_y: 0.0,
-            header_row: true,
-            header_col: false,
+            header_rows: 1,
+            header_cols: 1,
+            footer_rows: 0,
             col_names: HashMap::new(),
             row_names: HashMap::new(),
         }
+    }
+
+    pub fn is_header_row(&self, row: u32) -> bool {
+        row < self.header_rows
+    }
+
+    pub fn is_header_col(&self, col: u32) -> bool {
+        col < self.header_cols
+    }
+
+    pub fn is_footer_row(&self, row: u32) -> bool {
+        self.footer_rows > 0 && row >= self.rows.saturating_sub(self.footer_rows)
+    }
+
+    pub fn is_header_cell(&self, col: u32, row: u32) -> bool {
+        self.is_header_row(row) || self.is_header_col(col) || self.is_footer_row(row)
     }
 
     pub fn get_cell(&self, col: u32, row: u32) -> Option<&CellModel> {
@@ -206,16 +230,18 @@ impl TableModel {
         rewrite_refs_after_col_delete(&mut self.cells, col);
     }
 
-    /// Get a display name for a column — uses header row content or col_names, falls back to letter.
+    /// Get a display name for a column. Uses the last header row's non-formula
+    /// cell content, or col_names override, falling back to the column letter.
     pub fn col_display_name(&self, col: u32) -> String {
         if let Some(name) = self.col_names.get(&col) {
             if !name.is_empty() {
                 return name.clone();
             }
         }
-        if self.header_row {
-            if let Some(cell) = self.cells.get(&(col, 0)) {
-                if !cell.source.is_empty() {
+        if self.header_rows > 0 {
+            let header_row = self.header_rows - 1;
+            if let Some(cell) = self.cells.get(&(col, header_row)) {
+                if !cell.source.is_empty() && !cell.source.starts_with('=') {
                     return cell.source.clone();
                 }
             }
@@ -223,21 +249,43 @@ impl TableModel {
         col_index_to_label(col)
     }
 
-    /// Get a display name for a row — uses header col content or row_names, falls back to number.
+    /// Get a display name for a row. Uses the last header col's non-formula
+    /// cell content, or row_names override, falling back to the row number.
     pub fn row_display_name(&self, row: u32) -> String {
         if let Some(name) = self.row_names.get(&row) {
             if !name.is_empty() {
                 return name.clone();
             }
         }
-        if self.header_col {
-            if let Some(cell) = self.cells.get(&(0, row)) {
-                if !cell.source.is_empty() {
+        if self.header_cols > 0 {
+            let header_col = self.header_cols - 1;
+            if let Some(cell) = self.cells.get(&(header_col, row)) {
+                if !cell.source.is_empty() && !cell.source.starts_with('=') {
                     return cell.source.clone();
                 }
             }
         }
         (row + 1).to_string()
+    }
+
+    /// Get the pretty name for a column if headers provide one, else None.
+    pub fn col_pretty_name(&self, col: u32) -> Option<String> {
+        let name = self.col_display_name(col);
+        if name != col_index_to_label(col) {
+            Some(name)
+        } else {
+            None
+        }
+    }
+
+    /// Get the pretty name for a row if headers provide one, else None.
+    pub fn row_pretty_name(&self, row: u32) -> Option<String> {
+        let name = self.row_display_name(row);
+        if name != (row + 1).to_string() {
+            Some(name)
+        } else {
+            None
+        }
     }
 
     /// Move a cell from `from` to `to`. Rewrites all formulas that referenced

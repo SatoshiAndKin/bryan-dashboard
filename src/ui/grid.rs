@@ -82,7 +82,7 @@ pub fn SheetView(
                                     let is_editing = editing == Some((c, r));
                                     let is_clipboard = clipboard == Some((c, r));
                                     let is_drag_source = dragging == Some((c, r));
-                                    let is_header = (table.header_row && r == 0) || (table.header_col && c == 0);
+                                    let is_header = table.is_header_cell(c, r);
                                     let cell = table.get_cell(c, r);
                                     let display = cell
                                         .map(|c| c.computed.to_string())

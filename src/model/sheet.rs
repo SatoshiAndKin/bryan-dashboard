@@ -67,7 +67,8 @@ impl Sheet {
             .map(|t| t.canvas_y + (t.rows as f32 * 28.0) + 60.0)
             .fold(0.0f32, f32::max);
         table.canvas_y = max_y;
-        table.header_row = true;
+        table.header_rows = 1;
+        table.header_cols = 1;
         self.tables.push(table);
         self.active_table_id = id;
         id

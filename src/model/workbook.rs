@@ -61,10 +61,13 @@ impl WorkbookState {
                 next_table_id: self.next_table_id,
                 active_table_id: self.active_table_id,
             };
-            // Ensure tables have header_row set
+            // Ensure tables have header rows/cols set for migrated data
             for t in &mut sheet.tables {
-                if !t.header_row {
-                    t.header_row = true;
+                if t.header_rows == 0 {
+                    t.header_rows = 1;
+                }
+                if t.header_cols == 0 {
+                    t.header_cols = 1;
                 }
             }
             self.sheets = vec![sheet];

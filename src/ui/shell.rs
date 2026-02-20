@@ -112,6 +112,31 @@ pub fn WorkbookShell() -> Element {
                             save_workbook(&wb);
                         }
                     }
+                } else if !ctrl {
+                    // Type-to-edit: start editing when a printable key is pressed on a selected cell
+                    let u = ui.read();
+                    if u.editing.is_none() {
+                        if let Some((tid, col, row)) = u.selected {
+                            let ch = match e.key() {
+                                Key::Character(ref s) if !s.is_empty() => Some(s.clone()),
+                                _ => None,
+                            };
+                            if let Some(ch) = ch {
+                                // Ignore modifier-only or navigation keys
+                                if e.key() != Key::Tab
+                                    && e.key() != Key::Escape
+                                    && e.key() != Key::Enter
+                                    && e.key() != Key::Backspace
+                                    && e.key() != Key::Delete
+                                {
+                                    drop(u);
+                                    let mut u = ui.write();
+                                    u.editing = Some((tid, col, row));
+                                    u.edit_buffer = ch;
+                                }
+                            }
+                        }
+                    }
                 }
             },
 
