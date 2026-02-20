@@ -162,4 +162,4 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 - [x] accessibility: ARIA labels on grid cells, screen reader nav, high-contrast mode
 
-- [ ] git commit
+- [x] git commit

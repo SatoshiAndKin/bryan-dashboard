@@ -31,4 +31,14 @@
 
 - [ ] add Telegram Discussion Widget embedding — use telegram-widget.js for public channels with comments. Live chat room embedding is not officially supported by Telegram.
 
-- [ ] make sure it compiles with `~/.cargo/bin/dx build`
+- [x] make sure it compiles with `~/.cargo/bin/dx build`
+
+- [ ] high-contrast mode toggle in settings — swap the dark theme for a high-contrast black/white/yellow scheme for accessibility
+
+- [ ] multi-cell copy/paste — copy a selected range of cells and paste them as a block (currently only single-cell copy/paste works)
+
+- [ ] cell formatting persistence in formulas — number format should be auto-detected from formula context (e.g., ETH_BALANCE result auto-formats as currency)
+
+- [ ] conditional formatting rules — highlight cells based on value thresholds (e.g., red if negative, green if > 100)
+
+- [ ] column/row resize by dragging header borders — currently col_widths/row_heights exist but there's no drag-to-resize UI
