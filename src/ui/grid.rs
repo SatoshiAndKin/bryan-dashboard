@@ -85,11 +85,14 @@ pub fn SheetView(
                                     let is_header = table.is_header_cell(c, r);
                                     let cell = table.get_cell(c, r);
                                     let display = cell
-                                        .map(|c| c.computed.to_string())
+                                        .map(|c| c.format.format_value(&c.computed))
                                         .unwrap_or_default();
                                     let has_content = cell
                                         .map(|c| !c.source.is_empty())
                                         .unwrap_or(false);
+                                    let cell_style = cell
+                                        .map(|c| c.format.css_style())
+                                        .unwrap_or_default();
                                     let width = table.col_width(c);
                                     let height = table.row_height(r);
 
@@ -108,6 +111,7 @@ pub fn SheetView(
                                             edit_buffer: if is_editing { edit_buffer.clone() } else { String::new() },
                                             width,
                                             height,
+                                            cell_style,
                                             on_select: move |_| on_select_cell.call((c, r)),
                                             on_start_edit: move |_| on_start_edit.call((c, r)),
                                             on_edit_change: move |v: String| on_edit_change.call(v),

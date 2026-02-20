@@ -14,6 +14,7 @@ pub fn CellView(
     edit_buffer: String,
     width: f32,
     height: f32,
+    cell_style: String,
     on_select: EventHandler<()>,
     on_start_edit: EventHandler<()>,
     on_edit_change: EventHandler<String>,
@@ -42,10 +43,12 @@ pub fn CellView(
 
     let is_error = display_value.starts_with('#');
 
+    let base_style = format!("width:{width}px;min-width:{width}px;height:{height}px;{cell_style}");
+
     rsx! {
         td {
             class,
-            style: "width: {width}px; min-width: {width}px; height: {height}px;",
+            style: "{base_style}",
             draggable: if has_content && !is_editing { "true" } else { "false" },
             onclick: move |_| {
                 if !is_editing {

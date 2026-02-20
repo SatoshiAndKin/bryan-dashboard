@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::eth::BlockHead;
 use crate::formula::graph::{recalculate_table, recalculate_table_with_ctx};
-use crate::model::cell::col_index_to_label;
+use crate::model::cell::{col_index_to_label, NumberFormat, TextAlign};
 use crate::model::settings::AppSettings;
 use crate::model::sheet::SheetId;
 use crate::model::table::TableId;
@@ -159,6 +159,13 @@ pub fn WorkbookShell() -> Element {
                     (None, None) => None,
                 }
             })
+    });
+
+    let sel_format = selected.and_then(|(tid, col, row)| {
+        active_sheet
+            .as_ref()
+            .and_then(|s| s.table_by_id(tid))
+            .map(|t| t.get_cell_format(col, row))
     });
 
     rsx! {
@@ -554,7 +561,154 @@ pub fn WorkbookShell() -> Element {
                     }
                 }
 
+                // Cell formatting controls
+                if sel_info.is_some() {
+                    span { class: "toolbar-separator" }
+                    button {
+                        class: if sel_format.as_ref().map(|f| f.bold).unwrap_or(false) { "toolbar-btn active" } else { "toolbar-btn" },
+                        onclick: move |_| {
+                            if let Some((tid, col, row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        let mut fmt = table.get_cell_format(col, row);
+                                        fmt.bold = !fmt.bold;
+                                        table.set_cell_format(col, row, fmt);
+                                    }
+                                }
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                            }
+                        },
+                        "B"
+                    }
+                    button {
+                        class: if sel_format.as_ref().map(|f| f.italic).unwrap_or(false) { "toolbar-btn active" } else { "toolbar-btn" },
+                        onclick: move |_| {
+                            if let Some((tid, col, row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        let mut fmt = table.get_cell_format(col, row);
+                                        fmt.italic = !fmt.italic;
+                                        table.set_cell_format(col, row, fmt);
+                                    }
+                                }
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                            }
+                        },
+                        "I"
+                    }
+                    span { class: "toolbar-separator" }
+                    button {
+                        class: if sel_format.as_ref().map(|f| f.align == TextAlign::Left).unwrap_or(false) { "toolbar-btn active" } else { "toolbar-btn" },
+                        onclick: move |_| {
+                            if let Some((tid, col, row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        let mut fmt = table.get_cell_format(col, row);
+                                        fmt.align = if fmt.align == TextAlign::Left { TextAlign::Auto } else { TextAlign::Left };
+                                        table.set_cell_format(col, row, fmt);
+                                    }
+                                }
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                            }
+                        },
+                        "L"
+                    }
+                    button {
+                        class: if sel_format.as_ref().map(|f| f.align == TextAlign::Center).unwrap_or(false) { "toolbar-btn active" } else { "toolbar-btn" },
+                        onclick: move |_| {
+                            if let Some((tid, col, row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        let mut fmt = table.get_cell_format(col, row);
+                                        fmt.align = if fmt.align == TextAlign::Center { TextAlign::Auto } else { TextAlign::Center };
+                                        table.set_cell_format(col, row, fmt);
+                                    }
+                                }
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                            }
+                        },
+                        "C"
+                    }
+                    button {
+                        class: if sel_format.as_ref().map(|f| f.align == TextAlign::Right).unwrap_or(false) { "toolbar-btn active" } else { "toolbar-btn" },
+                        onclick: move |_| {
+                            if let Some((tid, col, row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        let mut fmt = table.get_cell_format(col, row);
+                                        fmt.align = if fmt.align == TextAlign::Right { TextAlign::Auto } else { TextAlign::Right };
+                                        table.set_cell_format(col, row, fmt);
+                                    }
+                                }
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                            }
+                        },
+                        "R"
+                    }
+                    span { class: "toolbar-separator" }
+                    button {
+                        class: if sel_format.as_ref().map(|f| f.number_format == NumberFormat::Currency).unwrap_or(false) { "toolbar-btn active" } else { "toolbar-btn" },
+                        onclick: move |_| {
+                            if let Some((tid, col, row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        let mut fmt = table.get_cell_format(col, row);
+                                        fmt.number_format = if fmt.number_format == NumberFormat::Currency { NumberFormat::Auto } else { NumberFormat::Currency };
+                                        table.set_cell_format(col, row, fmt);
+                                    }
+                                }
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                            }
+                        },
+                        "$"
+                    }
+                    button {
+                        class: if sel_format.as_ref().map(|f| f.number_format == NumberFormat::Percent).unwrap_or(false) { "toolbar-btn active" } else { "toolbar-btn" },
+                        onclick: move |_| {
+                            if let Some((tid, col, row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        let mut fmt = table.get_cell_format(col, row);
+                                        fmt.number_format = if fmt.number_format == NumberFormat::Percent { NumberFormat::Auto } else { NumberFormat::Percent };
+                                        table.set_cell_format(col, row, fmt);
+                                    }
+                                }
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                            }
+                        },
+                        "%"
+                    }
+                    button {
+                        class: if matches!(sel_format.as_ref().map(|f| f.number_format), Some(NumberFormat::Fixed(_))) { "toolbar-btn active" } else { "toolbar-btn" },
+                        onclick: move |_| {
+                            if let Some((tid, col, row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        let mut fmt = table.get_cell_format(col, row);
+                                        fmt.number_format = match fmt.number_format {
+                                            NumberFormat::Fixed(_) => NumberFormat::Auto,
+                                            _ => NumberFormat::Fixed(2),
+                                        };
+                                        table.set_cell_format(col, row, fmt);
+                                    }
+                                }
+                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                            }
+                        },
+                        ".00"
+                    }
+                }
+
                 if let Some((_col, row)) = sel_info {
+                    span { class: "toolbar-separator" }
                     button {
                         class: "toolbar-btn danger",
                         onclick: move |_| {

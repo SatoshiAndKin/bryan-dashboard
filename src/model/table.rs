@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 
-use super::cell::{col_index_to_label, CellModel, CellRef};
+use super::cell::{col_index_to_label, CellFormat, CellModel, CellRef};
 use crate::formula::rewrite::{
     rewrite_refs_after_col_delete, rewrite_refs_after_move, rewrite_refs_after_row_delete,
     shift_refs_in_source,
@@ -110,6 +110,18 @@ impl TableModel {
     pub fn set_cell_source(&mut self, col: u32, row: u32, source: String) {
         let cell = self.get_cell_mut(col, row);
         cell.source = source;
+    }
+
+    pub fn set_cell_format(&mut self, col: u32, row: u32, format: CellFormat) {
+        let cell = self.get_cell_mut(col, row);
+        cell.format = format;
+    }
+
+    pub fn get_cell_format(&self, col: u32, row: u32) -> CellFormat {
+        self.cells
+            .get(&(col, row))
+            .map(|c| c.format.clone())
+            .unwrap_or_default()
     }
 
     pub fn col_width(&self, col: u32) -> f32 {
@@ -342,6 +354,14 @@ impl TableModel {
         static DEFAULT: CellModel = CellModel {
             source: String::new(),
             computed: super::cell::CellValue::Empty,
+            format: super::cell::CellFormat {
+                number_format: super::cell::NumberFormat::Auto,
+                align: super::cell::TextAlign::Auto,
+                bold: false,
+                italic: false,
+                bg_color: None,
+                fg_color: None,
+            },
         };
         self.cells
             .get(&(cell_ref.col, cell_ref.row))

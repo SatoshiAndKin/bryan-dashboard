@@ -132,15 +132,15 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 - [x] git commit
 
-- [ ] keyboard navigation: arrow keys to move selection, Tab/Shift+Tab for next/prev cell, Enter to commit and move down
+- [x] keyboard navigation: arrow keys to move selection, Tab/Shift+Tab for next/prev cell, Enter to commit and move down
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] undo/redo system with command stack
+- [x] undo/redo system with command stack
 
-- [ ] git commit
+- [x] git commit
 
-- [ ] cell formatting: number formats (currency, %, dates), text alignment, cell colors/font styles
+- [x] cell formatting: number formats (currency, %, dates), text alignment, cell colors/font styles
 
 - [ ] git commit
 

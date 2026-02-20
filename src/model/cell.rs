@@ -98,11 +98,121 @@ impl fmt::Display for CellValue {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum NumberFormat {
+    #[default]
+    Auto,
+    Currency,
+    Percent,
+    Fixed(u8),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum TextAlign {
+    #[default]
+    Auto,
+    Left,
+    Center,
+    Right,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct CellFormat {
+    #[serde(default)]
+    pub number_format: NumberFormat,
+    #[serde(default)]
+    pub align: TextAlign,
+    #[serde(default)]
+    pub bold: bool,
+    #[serde(default)]
+    pub italic: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bg_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fg_color: Option<String>,
+}
+
+impl CellFormat {
+    pub fn format_value(&self, value: &CellValue) -> String {
+        match value {
+            CellValue::Number(n) => match self.number_format {
+                NumberFormat::Auto => {
+                    if *n == n.floor() && n.abs() < 1e15 {
+                        format!("{}", *n as i64)
+                    } else {
+                        format!("{:.6}", n)
+                    }
+                }
+                NumberFormat::Currency => {
+                    if *n < 0.0 {
+                        format!("-${:.2}", n.abs())
+                    } else {
+                        format!("${:.2}", n)
+                    }
+                }
+                NumberFormat::Percent => format!("{:.1}%", n * 100.0),
+                NumberFormat::Fixed(dp) => format!("{:.prec$}", n, prec = dp as usize),
+            },
+            other => other.to_string(),
+        }
+    }
+
+    pub fn css_style(&self) -> String {
+        let mut parts = Vec::new();
+        match self.align {
+            TextAlign::Left => parts.push("text-align:left"),
+            TextAlign::Center => parts.push("text-align:center"),
+            TextAlign::Right => parts.push("text-align:right"),
+            TextAlign::Auto => {}
+        }
+        if self.bold {
+            parts.push("font-weight:700");
+        }
+        if self.italic {
+            parts.push("font-style:italic");
+        }
+        if let Some(ref bg) = self.bg_color {
+            parts.push("will-replace-bg");
+            let _ = bg; // handled below
+        }
+        if let Some(ref fg) = self.fg_color {
+            let _ = fg; // handled below
+        }
+        // Build the actual style string with dynamic values
+        let mut style = String::new();
+        for p in &parts {
+            if *p == "will-replace-bg" {
+                if let Some(ref bg) = self.bg_color {
+                    style.push_str(&format!("background-color:{};", bg));
+                }
+            } else {
+                style.push_str(p);
+                style.push(';');
+            }
+        }
+        if let Some(ref fg) = self.fg_color {
+            style.push_str(&format!("color:{};", fg));
+        }
+        style
+    }
+
+    pub fn is_default(&self) -> bool {
+        self.number_format == NumberFormat::Auto
+            && self.align == TextAlign::Auto
+            && !self.bold
+            && !self.italic
+            && self.bg_color.is_none()
+            && self.fg_color.is_none()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CellModel {
     pub source: String,
     #[serde(skip)]
     pub computed: CellValue,
+    #[serde(default, skip_serializing_if = "CellFormat::is_default")]
+    pub format: CellFormat,
 }
 
 impl Default for CellModel {
@@ -110,6 +220,7 @@ impl Default for CellModel {
         Self {
             source: String::new(),
             computed: CellValue::Empty,
+            format: CellFormat::default(),
         }
     }
 }
@@ -186,6 +297,65 @@ mod tests {
         assert_eq!(r.label(), "A1");
         let r = CellRef::new(27, 9);
         assert_eq!(r.label(), "AB10");
+    }
+
+    #[test]
+    fn test_cell_format_currency() {
+        let fmt = CellFormat {
+            number_format: NumberFormat::Currency,
+            ..Default::default()
+        };
+        assert_eq!(fmt.format_value(&CellValue::Number(42.5)), "$42.50");
+        assert_eq!(fmt.format_value(&CellValue::Number(-10.0)), "-$10.00");
+        assert_eq!(fmt.format_value(&CellValue::Text("hi".into())), "hi");
+    }
+
+    #[test]
+    fn test_cell_format_percent() {
+        let fmt = CellFormat {
+            number_format: NumberFormat::Percent,
+            ..Default::default()
+        };
+        assert_eq!(fmt.format_value(&CellValue::Number(0.5)), "50.0%");
+        assert_eq!(fmt.format_value(&CellValue::Number(1.0)), "100.0%");
+    }
+
+    #[test]
+    fn test_cell_format_fixed() {
+        let fmt = CellFormat {
+            number_format: NumberFormat::Fixed(2),
+            ..Default::default()
+        };
+        assert_eq!(fmt.format_value(&CellValue::Number(3.14159)), "3.14");
+        assert_eq!(fmt.format_value(&CellValue::Number(42.0)), "42.00");
+    }
+
+    #[test]
+    fn test_cell_format_css_style() {
+        let fmt = CellFormat {
+            align: TextAlign::Right,
+            bold: true,
+            italic: true,
+            bg_color: Some("#ff0000".to_string()),
+            fg_color: Some("#00ff00".to_string()),
+            ..Default::default()
+        };
+        let style = fmt.css_style();
+        assert!(style.contains("text-align:right"));
+        assert!(style.contains("font-weight:700"));
+        assert!(style.contains("font-style:italic"));
+        assert!(style.contains("background-color:#ff0000"));
+        assert!(style.contains("color:#00ff00"));
+    }
+
+    #[test]
+    fn test_cell_format_is_default() {
+        assert!(CellFormat::default().is_default());
+        let fmt = CellFormat {
+            bold: true,
+            ..Default::default()
+        };
+        assert!(!fmt.is_default());
     }
 
     #[test]
