@@ -801,6 +801,14 @@ body {
     margin-top: 4px;
 }
 
+.settings-hint.rpc-test-ok {
+    color: #4caf50;
+}
+
+.settings-hint.rpc-test-err {
+    color: #ef5350;
+}
+
 .settings-block-info {
     background: #0d1b2a;
     border: 1px solid #0f3460;
