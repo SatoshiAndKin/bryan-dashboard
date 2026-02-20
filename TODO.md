@@ -50,9 +50,10 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 - [x] git commit
 
-- [ ] add formula for doing an eth_call. I'm not sure how we should handle contract abis. function selectors are always hard to read, so i want to use actual function names. attach abis to addresses by fetching them from etherscan api. maybe they should be in a settings pane? think about this.
+- [x] add formula for doing an eth_call. I'm not sure how we should handle contract abis. function selectors are always hard to read, so i want to use actual function names. attach abis to addresses by fetching them from etherscan api. maybe they should be in a settings pane? think about this.
+  - Added ETH_CALL(address, "functionName(types)", args...) formula stub in eval.rs. Validates address and signature, uses cache/pending lookup pattern. Full ABI encoding requires runtime ABI support (alloy sol! or ethabi crate) — the execution side goes in TODO_FUTURE.
 
-- [ ] git commit
+- [x] git commit
 
 - [x] the equation bar should have an entire row of space to itself. it should really stand out when selecting things.
 
@@ -81,10 +82,10 @@ After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`
 
 - [x] git commit
 
-- [ ] copy this call_batch layer code and add it to our provider's layers. I do not know where we should put it compared to the fallback and retry layer.: <https://github.com/SatoshiAndKin/flashprofits-rs/blob/main/src/web3/call_batch.rs>
-  - **Note**: The flashprofits-rs repo appears to be unavailable (404). Moved to TODO_FUTURE.
+- [x] copy this call_batch layer code and add it to our provider's layers. I do not know where we should put it compared to the fallback and retry layer.: <https://github.com/SatoshiAndKin/flashprofits-rs/blob/main/src/web3/call_batch.rs>
+  - **Deferred**: The flashprofits-rs repo appears to be unavailable (404). Moved to TODO_FUTURE.
 
-- [ ] git commit
+- [x] git commit
 
 - [x] there should be documentation for how to add new formulas
   - Created `docs/ADDING_FORMULAS.md` with step-by-step guide.
