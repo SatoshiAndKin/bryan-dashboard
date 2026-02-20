@@ -33,9 +33,9 @@ impl RpcEntry {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppSettings {
-    /// Legacy single RPC URL (kept for migration)
-    #[serde(default)]
-    pub rpc_url: String,
+    /// Legacy field — ignored on load, migrated into rpc_entries if present.
+    #[serde(default, skip_serializing)]
+    rpc_url: String,
     #[serde(default = "default_poll_interval")]
     pub poll_interval_secs: u32,
     #[serde(default)]
@@ -62,7 +62,11 @@ impl Default for AppSettings {
             rpc_url: String::new(),
             poll_interval_secs: 10,
             etherscan_api_key: String::new(),
-            rpc_entries: Vec::new(),
+            rpc_entries: vec![RpcEntry {
+                chain_id: 1,
+                chain_name: "Ethereum Mainnet".to_string(),
+                urls: String::new(),
+            }],
             max_retries: 3,
             retry_backoff_ms: 1000,
         }
@@ -71,12 +75,29 @@ impl Default for AppSettings {
 
 #[allow(dead_code)]
 impl AppSettings {
-    pub fn is_websocket(&self) -> bool {
-        // Check legacy URL first, then first rpc_entry
-        if !self.rpc_url.is_empty() {
-            let url = self.rpc_url.trim().to_lowercase();
-            return url.starts_with("ws://") || url.starts_with("wss://");
+    /// Migrate legacy `rpc_url` into `rpc_entries` on load, then clear it.
+    pub fn migrate_legacy_rpc(&mut self) {
+        let legacy = self.rpc_url.trim().to_string();
+        if !legacy.is_empty() {
+            if !self.rpc_entries.iter().any(|e| e.chain_id == 1) {
+                self.rpc_entries.insert(
+                    0,
+                    RpcEntry {
+                        chain_id: 1,
+                        chain_name: "Ethereum Mainnet".to_string(),
+                        urls: legacy,
+                    },
+                );
+            } else if let Some(entry) = self.rpc_entries.iter_mut().find(|e| e.chain_id == 1) {
+                if entry.urls.trim().is_empty() {
+                    entry.urls = legacy;
+                }
+            }
+            self.rpc_url.clear();
         }
+    }
+
+    pub fn is_websocket(&self) -> bool {
         self.rpc_entries
             .first()
             .map(|e| e.is_websocket())
@@ -92,24 +113,9 @@ impl AppSettings {
         self.effective_rpc_url().is_some()
     }
 
-    /// Get the effective primary RPC URL (legacy or first entry)
+    /// Get the primary RPC URL from the first entry that has one.
     pub fn effective_rpc_url(&self) -> Option<String> {
-        let legacy = self.rpc_url.trim();
-        if !legacy.is_empty() {
-            return Some(legacy.to_string());
-        }
-        self.rpc_entries.first().and_then(|e| e.primary_url())
-    }
-
-    /// Migrate legacy rpc_url to rpc_entries if needed
-    pub fn migrate_legacy_rpc(&mut self) {
-        if !self.rpc_url.is_empty() && self.rpc_entries.is_empty() {
-            self.rpc_entries.push(RpcEntry {
-                chain_id: 1,
-                chain_name: "Ethereum Mainnet".to_string(),
-                urls: self.rpc_url.clone(),
-            });
-        }
+        self.rpc_entries.iter().find_map(|e| e.primary_url())
     }
 
     /// Get RPC entry for a specific chain ID
@@ -128,9 +134,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_default_has_chain_1_entry() {
+        let s = AppSettings::default();
+        assert_eq!(s.rpc_entries.len(), 1);
+        assert_eq!(s.rpc_entries[0].chain_id, 1);
+        assert_eq!(s.rpc_entries[0].chain_name, "Ethereum Mainnet");
+        assert!(s.rpc_entries[0].urls.is_empty());
+    }
+
+    #[test]
+    fn test_default_no_rpc_configured() {
+        let s = AppSettings::default();
+        assert!(!s.has_rpc());
+    }
+
+    #[test]
     fn test_is_websocket() {
         let mut s = AppSettings::default();
-        s.rpc_url = "wss://mainnet.infura.io/ws/v3/key".into();
+        s.rpc_entries[0].urls = "wss://mainnet.infura.io/ws/v3/key".into();
         assert!(s.is_websocket());
         assert!(!s.is_http());
         assert!(s.has_rpc());
@@ -139,16 +160,10 @@ mod tests {
     #[test]
     fn test_is_http() {
         let mut s = AppSettings::default();
-        s.rpc_url = "https://mainnet.infura.io/v3/key".into();
+        s.rpc_entries[0].urls = "https://mainnet.infura.io/v3/key".into();
         assert!(!s.is_websocket());
         assert!(s.is_http());
         assert!(s.has_rpc());
-    }
-
-    #[test]
-    fn test_empty_rpc() {
-        let s = AppSettings::default();
-        assert!(!s.has_rpc());
     }
 
     #[test]
@@ -184,23 +199,56 @@ mod tests {
     }
 
     #[test]
-    fn test_migrate_legacy_rpc() {
-        let mut s = AppSettings::default();
-        s.rpc_url = "https://mainnet.infura.io/v3/key".into();
+    fn test_migrate_legacy_rpc_into_empty_chain1() {
+        let mut s = AppSettings {
+            rpc_url: "https://mainnet.infura.io/v3/key".into(),
+            rpc_entries: vec![RpcEntry {
+                chain_id: 1,
+                chain_name: "Ethereum Mainnet".to_string(),
+                urls: String::new(),
+            }],
+            ..Default::default()
+        };
+        s.migrate_legacy_rpc();
+        assert_eq!(s.rpc_entries.len(), 1);
+        assert_eq!(s.rpc_entries[0].urls, "https://mainnet.infura.io/v3/key");
+        assert!(s.rpc_url.is_empty());
+    }
+
+    #[test]
+    fn test_migrate_legacy_rpc_no_entries() {
+        let mut s = AppSettings {
+            rpc_url: "https://mainnet.infura.io/v3/key".into(),
+            rpc_entries: vec![],
+            ..Default::default()
+        };
         s.migrate_legacy_rpc();
         assert_eq!(s.rpc_entries.len(), 1);
         assert_eq!(s.rpc_entries[0].chain_id, 1);
-        assert_eq!(s.rpc_entries[0].urls, s.rpc_url);
+        assert_eq!(s.rpc_entries[0].urls, "https://mainnet.infura.io/v3/key");
+        assert!(s.rpc_url.is_empty());
+    }
+
+    #[test]
+    fn test_migrate_legacy_rpc_does_not_overwrite_existing() {
+        let mut s = AppSettings {
+            rpc_url: "https://legacy.example.com".into(),
+            rpc_entries: vec![RpcEntry {
+                chain_id: 1,
+                chain_name: "Ethereum".to_string(),
+                urls: "https://existing.example.com".to_string(),
+            }],
+            ..Default::default()
+        };
+        s.migrate_legacy_rpc();
+        assert_eq!(s.rpc_entries[0].urls, "https://existing.example.com");
+        assert!(s.rpc_url.is_empty());
     }
 
     #[test]
     fn test_rpc_for_chain() {
         let mut s = AppSettings::default();
-        s.rpc_entries.push(RpcEntry {
-            chain_id: 1,
-            chain_name: "Ethereum".to_string(),
-            urls: "https://eth.example.com".to_string(),
-        });
+        s.rpc_entries[0].urls = "https://eth.example.com".into();
         s.rpc_entries.push(RpcEntry {
             chain_id: 137,
             chain_name: "Polygon".to_string(),
@@ -213,43 +261,33 @@ mod tests {
 
     #[test]
     fn test_has_chain_id() {
-        let mut s = AppSettings::default();
-        s.rpc_entries.push(RpcEntry {
-            chain_id: 1,
-            chain_name: "Ethereum".to_string(),
-            urls: "https://eth.example.com".to_string(),
-        });
+        let s = AppSettings::default();
         assert!(s.has_chain_id(1));
         assert!(!s.has_chain_id(137));
     }
 
     #[test]
-    fn test_effective_rpc_url_legacy_first() {
+    fn test_effective_rpc_url_from_entries() {
         let mut s = AppSettings::default();
-        s.rpc_url = "https://legacy.example.com".into();
-        s.rpc_entries.push(RpcEntry {
-            chain_id: 1,
-            chain_name: "Ethereum".to_string(),
-            urls: "https://new.example.com".to_string(),
-        });
-        // Legacy URL takes precedence
+        s.rpc_entries[0].urls = "https://new.example.com".into();
         assert_eq!(
             s.effective_rpc_url(),
-            Some("https://legacy.example.com".to_string())
+            Some("https://new.example.com".to_string())
         );
     }
 
     #[test]
-    fn test_effective_rpc_url_from_entries() {
+    fn test_effective_rpc_url_skips_empty_entries() {
         let mut s = AppSettings::default();
+        // chain 1 has no URL
         s.rpc_entries.push(RpcEntry {
-            chain_id: 1,
-            chain_name: "Ethereum".to_string(),
-            urls: "https://new.example.com".to_string(),
+            chain_id: 137,
+            chain_name: "Polygon".to_string(),
+            urls: "https://polygon.example.com".to_string(),
         });
         assert_eq!(
             s.effective_rpc_url(),
-            Some("https://new.example.com".to_string())
+            Some("https://polygon.example.com".to_string())
         );
     }
 }

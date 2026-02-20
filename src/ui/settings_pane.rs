@@ -10,17 +10,17 @@ pub fn SettingsPane(
     on_save: EventHandler<AppSettings>,
     on_close: EventHandler<()>,
 ) -> Element {
-    let mut draft_url = use_signal(|| settings.rpc_url.clone());
     let mut draft_interval = use_signal(|| settings.poll_interval_secs.to_string());
     let mut draft_etherscan_key = use_signal(|| settings.etherscan_api_key.clone());
     let mut draft_entries = use_signal(|| settings.rpc_entries.clone());
     let mut draft_max_retries = use_signal(|| settings.max_retries.to_string());
     let mut draft_retry_backoff = use_signal(|| settings.retry_backoff_ms.to_string());
 
-    let is_ws = {
-        let url = draft_url.read().trim().to_lowercase();
-        url.starts_with("ws://") || url.starts_with("wss://")
-    };
+    let is_ws = draft_entries
+        .read()
+        .first()
+        .map(|e| e.is_websocket())
+        .unwrap_or(false);
 
     rsx! {
         div { class: "settings-overlay",
@@ -29,44 +29,15 @@ pub fn SettingsPane(
                 onclick: move |e| e.stop_propagation(),
                 h2 { class: "settings-title", "Settings" }
 
-                // Legacy RPC URL (backward compatible)
-                div { class: "settings-field",
-                    label { class: "settings-label", "Default RPC URL" }
-                    input {
-                        class: "settings-input",
-                        r#type: "text",
-                        placeholder: "wss://... or https://...",
-                        value: "{draft_url}",
-                        oninput: move |e| *draft_url.write() = e.value(),
-                    }
-                    span { class: "settings-hint",
-                        if is_ws {
-                            "WebSocket detected — will subscribe to newHeads"
-                        } else {
-                            "HTTP detected — will poll at interval"
-                        }
-                    }
-                }
-
-                if !is_ws {
-                    div { class: "settings-field",
-                        label { class: "settings-label", "Poll interval (seconds)" }
-                        input {
-                            class: "settings-input short",
-                            r#type: "number",
-                            min: "1",
-                            max: "3600",
-                            value: "{draft_interval}",
-                            oninput: move |e| *draft_interval.write() = e.value(),
-                        }
-                    }
-                }
-
-                // Multi-chain RPC entries
+                // Chain RPC entries
                 div { class: "settings-field",
                     label { class: "settings-label", "Chain RPC Providers" }
                     span { class: "settings-hint",
-                        "Add RPC URLs per chain. Use commas for multiple fallback providers."
+                        if is_ws {
+                            "WebSocket detected — will subscribe to newHeads. Use commas for fallback providers."
+                        } else {
+                            "Add RPC URLs per chain. Use commas for multiple fallback providers."
+                        }
                     }
                     for (i, entry) in draft_entries.read().iter().enumerate() {
                         {
@@ -127,6 +98,20 @@ pub fn SettingsPane(
                             });
                         },
                         "+ Add Chain"
+                    }
+                }
+
+                if !is_ws {
+                    div { class: "settings-field",
+                        label { class: "settings-label", "Poll interval (seconds)" }
+                        input {
+                            class: "settings-input short",
+                            r#type: "number",
+                            min: "1",
+                            max: "3600",
+                            value: "{draft_interval}",
+                            oninput: move |e| *draft_interval.write() = e.value(),
+                        }
                     }
                 }
 
@@ -213,14 +198,12 @@ pub fn SettingsPane(
                             let interval = draft_interval.read().parse::<u32>().unwrap_or(10).max(1);
                             let max_retries = draft_max_retries.read().parse::<u32>().unwrap_or(3);
                             let retry_backoff = draft_retry_backoff.read().parse::<u64>().unwrap_or(1000);
-                            let new_settings = AppSettings {
-                                rpc_url: draft_url.read().trim().to_string(),
-                                poll_interval_secs: interval,
-                                etherscan_api_key: draft_etherscan_key.read().trim().to_string(),
-                                rpc_entries: draft_entries.read().clone(),
-                                max_retries,
-                                retry_backoff_ms: retry_backoff,
-                            };
+                            let mut new_settings = AppSettings::default();
+                            new_settings.poll_interval_secs = interval;
+                            new_settings.etherscan_api_key = draft_etherscan_key.read().trim().to_string();
+                            new_settings.rpc_entries = draft_entries.read().clone();
+                            new_settings.max_retries = max_retries;
+                            new_settings.retry_backoff_ms = retry_backoff;
                             on_save.call(new_settings);
                         },
                         "Save"
