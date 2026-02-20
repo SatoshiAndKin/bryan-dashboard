@@ -1,3 +1,5 @@
+pub mod eip6963;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
