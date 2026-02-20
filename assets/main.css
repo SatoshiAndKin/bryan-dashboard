@@ -492,3 +492,69 @@ body {
     background: #2a3a5a;
     border-radius: 3px;
 }
+
+/* Confirmation Modal */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modal-dialog {
+    background: #1a1a2e;
+    border: 1px solid #0f3460;
+    border-radius: 10px;
+    padding: 24px 28px;
+    min-width: 320px;
+    max-width: 420px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.modal-message {
+    font-size: 14px;
+    color: #e0e0e0;
+    line-height: 1.5;
+    margin-bottom: 20px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.modal-btn {
+    padding: 6px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.modal-btn.cancel {
+    background: #16213e;
+    border-color: #0f3460;
+    color: #c0c0d8;
+}
+
+.modal-btn.cancel:hover {
+    background: #1a2a4a;
+    border-color: #1a4a7a;
+}
+
+.modal-btn.confirm {
+    background: #8b2020;
+    border-color: #a03030;
+    color: #fff;
+}
+
+.modal-btn.confirm:hover {
+    background: #a03030;
+    border-color: #c04040;
+}

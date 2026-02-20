@@ -5,9 +5,18 @@ use crate::model::cell::col_index_to_label;
 use crate::model::sheet::SheetId;
 use crate::model::table::TableId;
 use crate::persistence::{load_workbook, save_workbook};
+use crate::ui::confirm_modal::ConfirmModal;
 use crate::ui::func_sidebar::FuncSidebar;
 use crate::ui::grid::SheetView;
 use crate::ui::tabs::SheetTabsPanel;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PendingDelete {
+    Sheet(SheetId, String),
+    Table(TableId, String),
+    Row(TableId, u32),
+    Col(TableId, u32),
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct UiState {
@@ -29,6 +38,7 @@ pub fn WorkbookShell() -> Element {
         wb
     });
     let mut ui = use_signal(UiState::default);
+    let mut pending_delete: Signal<Option<PendingDelete>> = use_signal(|| None);
 
     let wb = workbook.read();
     let ui_state = ui.read();
@@ -122,12 +132,12 @@ pub fn WorkbookShell() -> Element {
                     save_workbook(&wb);
                 },
                 on_delete: move |id: SheetId| {
-                    let mut wb = workbook.write();
-                    wb.delete_sheet(id);
-                    save_workbook(&wb);
-                    let mut u = ui.write();
-                    u.selected = None;
-                    u.editing = None;
+                    let wb = workbook.read();
+                    let name = wb.sheet_by_id(id)
+                        .map(|s| s.name.clone())
+                        .unwrap_or_default();
+                    drop(wb);
+                    pending_delete.set(Some(PendingDelete::Sheet(id, name)));
                 },
                 on_rename: move |(id, name): (SheetId, String)| {
                     let mut wb = workbook.write();
@@ -182,17 +192,7 @@ pub fn WorkbookShell() -> Element {
                         class: "toolbar-btn danger",
                         onclick: move |_| {
                             if let Some(tid) = sel_table_id {
-                                let mut wb = workbook.write();
-                                if let Some(sheet) = wb.active_sheet_mut() {
-                                    if let Some(table) = sheet.table_by_id_mut(tid) {
-                                        table.delete_row(row);
-                                        recalculate_table(table);
-                                    }
-                                }
-                                save_workbook(&wb);
-                                let mut u = ui.write();
-                                u.selected = None;
-                                u.editing = None;
+                                pending_delete.set(Some(PendingDelete::Row(tid, row)));
                             }
                         },
                         "- Row"
@@ -203,17 +203,7 @@ pub fn WorkbookShell() -> Element {
                         class: "toolbar-btn danger",
                         onclick: move |_| {
                             if let Some(tid) = sel_table_id {
-                                let mut wb = workbook.write();
-                                if let Some(sheet) = wb.active_sheet_mut() {
-                                    if let Some(table) = sheet.table_by_id_mut(tid) {
-                                        table.delete_col(col);
-                                        recalculate_table(table);
-                                    }
-                                }
-                                save_workbook(&wb);
-                                let mut u = ui.write();
-                                u.selected = None;
-                                u.editing = None;
+                                pending_delete.set(Some(PendingDelete::Col(tid, col)));
                             }
                         },
                         "- Col"
@@ -259,16 +249,7 @@ pub fn WorkbookShell() -> Element {
                                                 button {
                                                     class: "canvas-table-delete",
                                                     onclick: move |_| {
-                                                        let mut wb = workbook.write();
-                                                        if let Some(sheet) = wb.active_sheet_mut() {
-                                                            sheet.delete_table(tid);
-                                                        }
-                                                        save_workbook(&wb);
-                                                        let mut u = ui.write();
-                                                        if u.selected.map(|(t, _, _)| t) == Some(tid) {
-                                                            u.selected = None;
-                                                            u.editing = None;
-                                                        }
+                                                        pending_delete.set(Some(PendingDelete::Table(tid, table_name.clone())));
                                                     },
                                                     "x"
                                                 }
@@ -419,6 +400,83 @@ pub fn WorkbookShell() -> Element {
                         on_insert: move |text: String| {
                             ui.write().edit_buffer.push_str(&text);
                         },
+                    }
+                }
+            }
+
+            // Confirmation modal
+            if let Some(pd) = pending_delete() {
+                {
+                    let msg = match &pd {
+                        PendingDelete::Sheet(_, name) => format!("Delete sheet \"{}\"? All tables and data in it will be lost.", name),
+                        PendingDelete::Table(_, name) => format!("Delete table \"{}\"? All data in it will be lost.", name),
+                        PendingDelete::Row(_, row) => format!("Delete row {}?", row + 1),
+                        PendingDelete::Col(_, col) => format!("Delete column {}?", col_index_to_label(*col)),
+                    };
+                    rsx! {
+                        ConfirmModal {
+                            message: msg,
+                            on_confirm: move |_: ()| {
+                                match &pd {
+                                    PendingDelete::Sheet(id, _) => {
+                                        let id = *id;
+                                        let mut wb = workbook.write();
+                                        wb.delete_sheet(id);
+                                        save_workbook(&wb);
+                                        let mut u = ui.write();
+                                        u.selected = None;
+                                        u.editing = None;
+                                    }
+                                    PendingDelete::Table(tid, _) => {
+                                        let tid = *tid;
+                                        let mut wb = workbook.write();
+                                        if let Some(sheet) = wb.active_sheet_mut() {
+                                            sheet.delete_table(tid);
+                                        }
+                                        save_workbook(&wb);
+                                        let mut u = ui.write();
+                                        if u.selected.map(|(t, _, _)| t) == Some(tid) {
+                                            u.selected = None;
+                                            u.editing = None;
+                                        }
+                                    }
+                                    PendingDelete::Row(tid, row) => {
+                                        let tid = *tid;
+                                        let row = *row;
+                                        let mut wb = workbook.write();
+                                        if let Some(sheet) = wb.active_sheet_mut() {
+                                            if let Some(table) = sheet.table_by_id_mut(tid) {
+                                                table.delete_row(row);
+                                                recalculate_table(table);
+                                            }
+                                        }
+                                        save_workbook(&wb);
+                                        let mut u = ui.write();
+                                        u.selected = None;
+                                        u.editing = None;
+                                    }
+                                    PendingDelete::Col(tid, col) => {
+                                        let tid = *tid;
+                                        let col = *col;
+                                        let mut wb = workbook.write();
+                                        if let Some(sheet) = wb.active_sheet_mut() {
+                                            if let Some(table) = sheet.table_by_id_mut(tid) {
+                                                table.delete_col(col);
+                                                recalculate_table(table);
+                                            }
+                                        }
+                                        save_workbook(&wb);
+                                        let mut u = ui.write();
+                                        u.selected = None;
+                                        u.editing = None;
+                                    }
+                                }
+                                pending_delete.set(None);
+                            },
+                            on_cancel: move |_: ()| {
+                                pending_delete.set(None);
+                            },
+                        }
                     }
                 }
             }

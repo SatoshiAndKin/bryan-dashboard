@@ -3,6 +3,22 @@ use serde::{Deserialize, Serialize};
 use super::sheet::{Sheet, SheetId};
 use super::table::{TableId, TableModel};
 
+/// Given a base name and a list of existing names, return a unique name.
+/// If `base` is already unique, returns it as-is. Otherwise appends " (2)", " (3)", etc.
+pub fn unique_name(base: &str, existing: &[&str]) -> String {
+    if !existing.iter().any(|n| n.eq_ignore_ascii_case(base)) {
+        return base.to_string();
+    }
+    let mut i = 2u32;
+    loop {
+        let candidate = format!("{} ({})", base, i);
+        if !existing.iter().any(|n| n.eq_ignore_ascii_case(&candidate)) {
+            return candidate;
+        }
+        i += 1;
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorkbookState {
     pub version: u32,
@@ -76,9 +92,15 @@ impl WorkbookState {
         self.sheets.iter_mut().find(|s| s.id == id)
     }
 
+    fn unique_sheet_name(&self, base: &str) -> String {
+        let existing: Vec<&str> = self.sheets.iter().map(|s| s.name.as_str()).collect();
+        unique_name(base, &existing)
+    }
+
     pub fn add_sheet(&mut self, name: String) -> SheetId {
         let id = self.next_sheet_id;
         self.next_sheet_id += 1;
+        let name = self.unique_sheet_name(&name);
         self.sheets.push(Sheet::new(id, name));
         self.active_sheet_id = id;
         id
@@ -95,6 +117,13 @@ impl WorkbookState {
     }
 
     pub fn rename_sheet(&mut self, id: SheetId, name: String) {
+        let existing: Vec<&str> = self
+            .sheets
+            .iter()
+            .filter(|s| s.id != id)
+            .map(|s| s.name.as_str())
+            .collect();
+        let name = unique_name(&name, &existing);
         if let Some(s) = self.sheets.iter_mut().find(|s| s.id == id) {
             s.name = name;
         }

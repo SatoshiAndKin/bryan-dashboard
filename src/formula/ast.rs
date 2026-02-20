@@ -4,11 +4,11 @@ use crate::model::CellRef;
 pub enum Expr {
     Number(f64),
     CellRef(CellRef),
-    /// TABLE_NAME::A1
-    CrossTableRef(String, CellRef),
+    /// Optional sheet + table: Table 1::A1 or Sheet 1::Table 1::A1
+    CrossTableRef(Option<String>, String, CellRef),
     Range(CellRef, CellRef),
-    /// TABLE_NAME::A1:B5
-    CrossTableRange(String, CellRef, CellRef),
+    /// Optional sheet + table range: Table 1::A1:B5 or Sheet 1::Table 1::A1:B5
+    CrossTableRange(Option<String>, String, CellRef, CellRef),
     BinOp(Box<Expr>, BinOp, Box<Expr>),
     UnaryNeg(Box<Expr>),
     FuncCall(String, Vec<Expr>),

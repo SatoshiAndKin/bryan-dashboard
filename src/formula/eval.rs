@@ -2,10 +2,14 @@ use super::ast::{BinOp, Expr};
 use crate::model::cell::{CellRef, CellValue};
 use crate::model::table::TableModel;
 
-/// Evaluation context: the current table plus sibling tables for cross-table refs
+/// Evaluation context: the current table, sibling tables on the same sheet,
+/// and all tables across all sheets for cross-sheet references.
 pub struct EvalContext<'a> {
     pub current: &'a TableModel,
+    /// Tables on the same sheet (for TABLE::A1 without sheet qualifier)
     pub siblings: &'a [TableModel],
+    /// All (sheet_name, table) pairs across all sheets (for SHEET::TABLE::A1)
+    pub all_tables: Vec<(&'a str, &'a TableModel)>,
 }
 
 impl<'a> EvalContext<'a> {
@@ -13,6 +17,7 @@ impl<'a> EvalContext<'a> {
         Self {
             current: table,
             siblings: &[],
+            all_tables: Vec::new(),
         }
     }
 
@@ -20,11 +25,45 @@ impl<'a> EvalContext<'a> {
         Self {
             current: table,
             siblings,
+            all_tables: Vec::new(),
         }
     }
 
+    pub fn full(
+        table: &'a TableModel,
+        siblings: &'a [TableModel],
+        all_tables: Vec<(&'a str, &'a TableModel)>,
+    ) -> Self {
+        Self {
+            current: table,
+            siblings,
+            all_tables,
+        }
+    }
+
+    /// Find a table by name on the same sheet (no sheet qualifier)
     fn find_table(&self, name: &str) -> Option<&'a TableModel> {
         self.siblings.iter().find(|t| t.name == name)
+    }
+
+    /// Find a table by sheet name + table name (cross-sheet)
+    fn find_table_on_sheet(&self, sheet_name: &str, table_name: &str) -> Option<&'a TableModel> {
+        self.all_tables
+            .iter()
+            .find(|(sn, t)| *sn == sheet_name && t.name == table_name)
+            .map(|(_, t)| *t)
+    }
+
+    /// Resolve a cross-table ref that may or may not have a sheet qualifier
+    fn resolve_cross_ref(
+        &self,
+        sheet: &Option<String>,
+        table_name: &str,
+    ) -> Option<&'a TableModel> {
+        match sheet {
+            Some(sn) => self.find_table_on_sheet(sn, table_name),
+            None => self.find_table(table_name),
+        }
     }
 }
 
@@ -32,15 +71,15 @@ pub fn evaluate(expr: &Expr, ctx: &EvalContext) -> CellValue {
     match expr {
         Expr::Number(n) => CellValue::Number(*n),
         Expr::CellRef(r) => resolve_cell(r, ctx.current),
-        Expr::CrossTableRef(table_name, r) => {
-            if let Some(table) = ctx.find_table(table_name) {
+        Expr::CrossTableRef(sheet, table_name, r) => {
+            if let Some(table) = ctx.resolve_cross_ref(sheet, table_name) {
                 resolve_cell(r, table)
             } else {
                 CellValue::Error("#REF!".to_string())
             }
         }
         Expr::Range(_, _) => CellValue::Error("#PARSE!".to_string()),
-        Expr::CrossTableRange(_, _, _) => CellValue::Error("#PARSE!".to_string()),
+        Expr::CrossTableRange(_, _, _, _) => CellValue::Error("#PARSE!".to_string()),
         Expr::UnaryNeg(inner) => match evaluate(inner, ctx) {
             CellValue::Number(n) => CellValue::Number(-n),
             CellValue::Empty => CellValue::Number(0.0),
@@ -161,8 +200,8 @@ fn collect_values(args: &[Expr], ctx: &EvalContext) -> Vec<CellValue> {
             Expr::Range(start, end) => {
                 values.extend(collect_range(start, end, ctx.current));
             }
-            Expr::CrossTableRange(table_name, start, end) => {
-                if let Some(table) = ctx.find_table(table_name) {
+            Expr::CrossTableRange(sheet, table_name, start, end) => {
+                if let Some(table) = ctx.resolve_cross_ref(sheet, table_name) {
                     values.extend(collect_range(start, end, table));
                 } else {
                     values.push(CellValue::Error("#REF!".to_string()));

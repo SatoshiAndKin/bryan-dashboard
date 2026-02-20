@@ -84,67 +84,92 @@ impl Parser {
         self.parse_primary()
     }
 
-    /// Check if the tokens starting at current position form a cross-table reference:
-    /// IDENT (possibly followed by more IDENT for multi-word names) :: IDENT
+    /// Parse cross-table or cross-sheet references:
+    ///   TABLE::A1           -> CrossTableRef(None, table, ref)
+    ///   SHEET::TABLE::A1    -> CrossTableRef(Some(sheet), table, ref)
+    ///   TABLE::A1:B5        -> CrossTableRange(None, table, start, end)
+    ///   SHEET::TABLE::A1:B5 -> CrossTableRange(Some(sheet), table, start, end)
     fn try_parse_cross_table_ref(&mut self) -> Option<Result<Expr, String>> {
-        // Look ahead for :: pattern
         let save_pos = self.pos;
-        let mut name_parts = Vec::new();
 
-        // Collect ident tokens that form the table name
+        // Consume first NAME before ::
+        let first_name = match self.consume_name_before_double_colon() {
+            Some(n) => n,
+            None => {
+                self.pos = save_pos;
+                return None;
+            }
+        };
+
+        // We consumed NAME:: — now check what follows
+        // If next is another NAME::, then first_name is sheet, second is table
+        // If next is a cell ref (IDENT that parses as cell ref), then first_name is table
+
+        let checkpoint = self.pos;
+        if let Some(second_name) = self.consume_name_before_double_colon() {
+            // SHEET::TABLE:: — now expect cell ref
+            return Some(self.parse_cell_ref_or_range(Some(first_name), second_name));
+        }
+        self.pos = checkpoint;
+
+        // TABLE:: — expect cell ref
+        Some(self.parse_cell_ref_or_range(None, first_name))
+    }
+
+    /// Try to consume IDENT :: (where IDENT may include spaces per lexer rules).
+    /// Returns the name if successful, None otherwise (restoring position).
+    fn consume_name_before_double_colon(&mut self) -> Option<String> {
+        let save = self.pos;
+        let mut parts = Vec::new();
         loop {
             match self.peek() {
                 Token::Ident(s) => {
-                    name_parts.push(s.clone());
+                    parts.push(s.clone());
                     self.advance();
-                    // Check if next is ::
                     if *self.peek() == Token::DoubleColon {
                         break;
                     }
-                    // Otherwise this might be part of a multi-word table name
-                    // (but the lexer already handles spaces before :: — see lexer)
                 }
                 _ => {
-                    // Not a cross-table ref, restore position
-                    self.pos = save_pos;
+                    self.pos = save;
                     return None;
                 }
             }
         }
-
-        if name_parts.is_empty() || *self.peek() != Token::DoubleColon {
-            self.pos = save_pos;
+        if parts.is_empty() || *self.peek() != Token::DoubleColon {
+            self.pos = save;
             return None;
         }
-
         self.advance(); // consume ::
+        Some(parts.join(" "))
+    }
 
-        let table_name = name_parts.join(" ");
-
-        // Now expect a cell ref
+    /// After consuming [SHEET::]TABLE::, parse the trailing cell ref or range.
+    fn parse_cell_ref_or_range(
+        &mut self,
+        sheet: Option<String>,
+        table: String,
+    ) -> Result<Expr, String> {
         match self.peek().clone() {
             Token::Ident(ref_name) => {
                 self.advance();
                 if let Some(cell_ref) = parse_cell_ref(&ref_name) {
-                    // Check for range
                     if *self.peek() == Token::Colon {
                         self.advance();
                         let end_tok = self.advance();
                         if let Token::Ident(end_name) = end_tok {
                             if let Some(end_ref) = parse_cell_ref(&end_name) {
-                                return Some(Ok(Expr::CrossTableRange(
-                                    table_name, cell_ref, end_ref,
-                                )));
+                                return Ok(Expr::CrossTableRange(sheet, table, cell_ref, end_ref));
                             }
                         }
-                        return Some(Err("#REF!".to_string()));
+                        return Err("#REF!".to_string());
                     }
-                    Some(Ok(Expr::CrossTableRef(table_name, cell_ref)))
+                    Ok(Expr::CrossTableRef(sheet, table, cell_ref))
                 } else {
-                    Some(Err("#REF!".to_string()))
+                    Err("#REF!".to_string())
                 }
             }
-            _ => Some(Err("#REF!".to_string())),
+            _ => Err("#REF!".to_string()),
         }
     }
 

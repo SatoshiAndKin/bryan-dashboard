@@ -11,7 +11,7 @@ fn extract_local_deps(expr: &Expr) -> Vec<CellRef> {
     match expr {
         Expr::Number(_) => {}
         Expr::CellRef(r) => deps.push(r.clone()),
-        Expr::CrossTableRef(_, _) => {} // external dep, not tracked in local graph
+        Expr::CrossTableRef(_, _, _) => {} // external dep, not tracked in local graph
         Expr::Range(start, end) => {
             let min_col = start.col.min(end.col);
             let max_col = start.col.max(end.col);
@@ -23,7 +23,7 @@ fn extract_local_deps(expr: &Expr) -> Vec<CellRef> {
                 }
             }
         }
-        Expr::CrossTableRange(_, _, _) => {} // external dep
+        Expr::CrossTableRange(_, _, _, _) => {} // external dep
         Expr::UnaryNeg(inner) => deps.extend(extract_local_deps(inner)),
         Expr::BinOp(l, _, r) => {
             deps.extend(extract_local_deps(l));
