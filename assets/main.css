@@ -301,6 +301,14 @@ body {
     padding: 3px 8px;
 }
 
+.formula-bar-raw {
+    font-size: 10px;
+    color: #556080;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 /* Formula Bar Row */
 .formula-bar-row {
     display: flex;

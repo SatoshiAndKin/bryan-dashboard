@@ -247,20 +247,19 @@ pub fn WorkbookShell() -> Element {
         })
         .unwrap_or_default();
 
-    let sel_pretty_name = selected.and_then(|(tid, col, row)| {
+    let sel_pretty_source = selected.and_then(|(tid, _col, _row)| {
         active_sheet
             .as_ref()
             .and_then(|s| s.table_by_id(tid))
-            .and_then(|t| {
-                let col_name = t.col_pretty_name(col);
-                let row_name = t.row_pretty_name(row);
-                match (col_name, row_name) {
-                    (Some(cn), Some(rn)) => Some(format!("{}, {}", cn, rn)),
-                    (Some(cn), None) => Some(cn),
-                    (None, Some(rn)) => Some(rn),
-                    (None, None) => None,
+            .map(|t| {
+                let pretty = t.prettify_formula(&sel_source);
+                if pretty != sel_source {
+                    Some(pretty)
+                } else {
+                    None
                 }
             })
+            .flatten()
     });
 
     let sel_format = selected.and_then(|(tid, col, row)| {
@@ -924,13 +923,8 @@ pub fn WorkbookShell() -> Element {
             // Formula bar — full width row
             div { class: "formula-bar-row",
                 if let Some((col, row)) = sel_info {
-                    if let Some(ref pretty) = sel_pretty_name {
-                        span { class: "cell-indicator", "{pretty}" }
-                        span { class: "cell-indicator-name", "{col_index_to_label(col)}{row + 1}" }
-                    } else {
-                        span { class: "cell-indicator",
-                            "{col_index_to_label(col)}{row + 1}"
-                        }
+                    span { class: "cell-indicator",
+                        "{col_index_to_label(col)}{row + 1}"
                     }
                 }
                 if editing.is_some() {
@@ -938,8 +932,11 @@ pub fn WorkbookShell() -> Element {
                         "{edit_buffer}"
                     }
                 } else if !sel_source.is_empty() {
-                    span { class: "formula-bar readonly",
-                        "{sel_source}"
+                    if let Some(ref pretty) = sel_pretty_source {
+                        span { class: "formula-bar readonly", "{pretty}" }
+                        span { class: "formula-bar-raw", "{sel_source}" }
+                    } else {
+                        span { class: "formula-bar readonly", "{sel_source}" }
                     }
                 }
             }

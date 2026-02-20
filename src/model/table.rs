@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 
-use super::cell::{col_index_to_label, CellFormat, CellModel, CellRef};
+use super::cell::{col_index_to_label, parse_cell_ref, CellFormat, CellModel, CellRef};
 use crate::formula::rewrite::{
     rewrite_refs_after_col_delete, rewrite_refs_after_move, rewrite_refs_after_row_delete,
     shift_refs_in_source,
@@ -320,6 +320,53 @@ impl TableModel {
         } else {
             None
         }
+    }
+
+    /// Replace A1-style cell references in a formula with pretty names when available.
+    /// E.g. `=SUM(A1:A5)` -> `=SUM(Price:Price)` if col A has header "Price".
+    pub fn prettify_formula(&self, source: &str) -> String {
+        if !source.starts_with('=') {
+            return source.to_string();
+        }
+        let chars: Vec<char> = source.chars().collect();
+        let mut result = String::with_capacity(source.len());
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i].is_ascii_uppercase() {
+                let start = i;
+                while i < chars.len() && chars[i].is_ascii_uppercase() {
+                    i += 1;
+                }
+                let col_end = i;
+                if i < chars.len() && chars[i].is_ascii_digit() {
+                    while i < chars.len() && chars[i].is_ascii_digit() {
+                        i += 1;
+                    }
+                    let ref_str: String = chars[start..i].iter().collect();
+                    if let Some(cr) = parse_cell_ref(&ref_str) {
+                        let col_name = self.col_pretty_name(cr.col);
+                        let row_name = self.row_pretty_name(cr.row);
+                        match (col_name, row_name) {
+                            (Some(cn), Some(rn)) => result.push_str(&format!("{}.{}", cn, rn)),
+                            (Some(cn), None) => result.push_str(&format!("{}{}", cn, cr.row + 1)),
+                            (None, Some(rn)) => {
+                                result.push_str(&format!("{}{}", col_index_to_label(cr.col), rn))
+                            }
+                            (None, None) => result.push_str(&ref_str),
+                        }
+                    } else {
+                        result.push_str(&ref_str);
+                    }
+                } else {
+                    let ident: String = chars[start..col_end].iter().collect();
+                    result.push_str(&ident);
+                }
+            } else {
+                result.push(chars[i]);
+                i += 1;
+            }
+        }
+        result
     }
 
     /// Move a cell from `from` to `to`. Rewrites all formulas that referenced
@@ -657,5 +704,28 @@ mod tests {
             t.cells[&(0, 0)].computed,
             crate::model::cell::CellValue::Error(_)
         ));
+    }
+
+    #[test]
+    fn test_prettify_formula_with_headers() {
+        let mut t = make_table(5, 3);
+        t.header_rows = 1;
+        t.header_cols = 0;
+        t.set_cell_source(0, 0, "Price".to_string());
+        t.set_cell_source(1, 0, "Qty".to_string());
+        t.set_cell_source(2, 0, "Total".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.prettify_formula("=SUM(A2:A5)"), "=SUM(Price2:Price5)");
+        assert_eq!(t.prettify_formula("=A2+B3"), "=Price2+Qty3");
+        assert_eq!(t.prettify_formula("=C1"), "=Total1");
+        assert_eq!(t.prettify_formula("hello"), "hello");
+    }
+
+    #[test]
+    fn test_prettify_formula_no_headers() {
+        let mut t = make_table(3, 2);
+        t.header_rows = 0;
+        t.header_cols = 0;
+        assert_eq!(t.prettify_formula("=A1+B2"), "=A1+B2");
     }
 }

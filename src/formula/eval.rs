@@ -23,10 +23,17 @@ pub struct EvalContext<'a> {
 
 impl<'a> EvalContext<'a> {
     fn default_now() -> f64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs_f64())
-            .unwrap_or(0.0)
+        #[cfg(target_arch = "wasm32")]
+        {
+            js_sys::Date::now() / 1000.0
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0)
+        }
     }
 
     #[allow(dead_code)]
