@@ -8,7 +8,7 @@ use wasm_bindgen::JsCast;
 type AnimCallback = std::rc::Rc<std::cell::RefCell<Option<Closure<dyn FnMut(f64)>>>>;
 
 #[component]
-pub fn BuddyCharacter() -> Element {
+pub fn BuddyCharacter(messages: Vec<(String, f64)>) -> Element {
     let pos = use_signal(|| (60.0_f64, 120.0_f64));
     #[allow(unused_variables)]
     let mouse = use_signal(|| (-1000.0_f64, -1000.0_f64));
@@ -29,6 +29,13 @@ pub fn BuddyCharacter() -> Element {
             class: "buddy",
             style: "left: {x}px; top: {y}px;",
             onmousemove: move |_| {},
+            for (i, (msg, _ts)) in messages.iter().enumerate() {
+                div {
+                    class: "buddy-bubble",
+                    style: "bottom: {20 + i as i32 * 24}px;",
+                    "{msg}"
+                }
+            }
             "(o_o)"
         }
     }

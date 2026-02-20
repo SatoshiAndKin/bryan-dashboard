@@ -450,6 +450,26 @@ body {
     transition: color 0.3s;
 }
 
+.buddy-bubble {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 25, 50, 0.8);
+    border: 1px solid rgba(74, 144, 217, 0.4);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 10px;
+    color: #8aa8d8;
+    white-space: nowrap;
+    animation: bubble-fade 3s ease-out forwards;
+}
+
+@keyframes bubble-fade {
+    0% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    70% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+}
+
 .canvas-table {
     border: 1px solid #1e2a4a;
     border-radius: 8px;
@@ -643,6 +663,7 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-family: 'SF Mono', 'Fira Code', monospace;
     font-size: 12px;
     color: #e0e0e0;
 }
@@ -651,6 +672,7 @@ body {
     display: block;
     padding: 3px 6px;
     color: #ff6b6b;
+    font-family: 'SF Mono', 'Fira Code', monospace;
     font-size: 11px;
     font-weight: 500;
 }

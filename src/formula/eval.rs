@@ -17,9 +17,18 @@ pub struct EvalContext<'a> {
     pub balance_cache: Option<&'a std::collections::HashMap<String, String>>,
     /// Addresses that need balance lookups (collected during eval)
     pub pending_lookups: Option<&'a std::cell::RefCell<Vec<String>>>,
+    /// Current unix timestamp in seconds (for BLOCK_AGE)
+    pub now_secs: f64,
 }
 
 impl<'a> EvalContext<'a> {
+    fn default_now() -> f64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0)
+    }
+
     #[allow(dead_code)]
     pub fn single(table: &'a TableModel) -> Self {
         Self {
@@ -29,6 +38,7 @@ impl<'a> EvalContext<'a> {
             block_head: None,
             balance_cache: None,
             pending_lookups: None,
+            now_secs: Self::default_now(),
         }
     }
 
@@ -40,6 +50,7 @@ impl<'a> EvalContext<'a> {
             block_head: None,
             balance_cache: None,
             pending_lookups: None,
+            now_secs: Self::default_now(),
         }
     }
 
@@ -56,6 +67,7 @@ impl<'a> EvalContext<'a> {
             block_head: None,
             balance_cache: None,
             pending_lookups: None,
+            now_secs: Self::default_now(),
         }
     }
 
@@ -279,6 +291,24 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
                 match bh.base_fee {
                     Some(fee) => CellValue::Number(fee as f64),
                     None => CellValue::Empty,
+                }
+            } else {
+                CellValue::Error("#NO_RPC!".to_string())
+            }
+        }
+        "BLOCK_AGE" => {
+            let requested_chain = get_optional_chain_id(args, ctx);
+            if let Some(bh) = ctx.block_head {
+                if let Some(chain_id) = requested_chain {
+                    if bh.chain_id != 0 && bh.chain_id != chain_id {
+                        return CellValue::Error(format!("#CHAIN! connected to {}", bh.chain_id));
+                    }
+                }
+                let age = ctx.now_secs - bh.timestamp as f64;
+                if age < 0.0 {
+                    CellValue::Number(0.0)
+                } else {
+                    CellValue::Number((age * 1000.0).round() / 1000.0)
                 }
             } else {
                 CellValue::Error("#NO_RPC!".to_string())
@@ -555,6 +585,27 @@ mod tests {
         assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(1700000000.0));
         assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(50.0));
         assert_eq!(t.cells[&(0, 2)].computed, CellValue::Number(100.0));
+    }
+
+    #[test]
+    fn test_block_age() {
+        use crate::formula::graph::recalculate_table_with_ctx;
+        let bh = BlockHead {
+            number: 100,
+            hash: "0xabc".to_string(),
+            timestamp: 1700000000,
+            base_fee: None,
+            chain_id: 1,
+        };
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=BLOCK_AGE()".to_string());
+        let pending = std::cell::RefCell::new(Vec::<String>::new());
+        recalculate_table_with_ctx(&mut t, &[], Some(&bh), None, Some(&pending));
+        // now_secs is SystemTime::now(), so age should be > 0 (timestamp is in the past)
+        match &t.cells[&(0, 0)].computed {
+            CellValue::Number(v) => assert!(*v > 0.0, "BLOCK_AGE should be positive"),
+            other => panic!("Expected Number, got {:?}", other),
+        }
     }
 
     #[test]

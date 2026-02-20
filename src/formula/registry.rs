@@ -42,6 +42,11 @@ pub const BUILTIN_FUNCTIONS: &[FuncInfo] = &[
         description: "Returns the latest block base fee in wei. Optional chain_id to verify chain.",
     },
     FuncInfo {
+        name: "BLOCK_AGE",
+        syntax: "BLOCK_AGE([chain_id])",
+        description: "Returns seconds since the latest block timestamp. Includes milliseconds.",
+    },
+    FuncInfo {
         name: "ETH_BALANCE",
         syntax: "ETH_BALANCE(address)",
         description: "Returns the ETH balance of an address (in ETH).",

@@ -111,6 +111,9 @@ pub fn WorkbookShell() -> Element {
     let mut last_saved: Signal<Option<String>> = use_signal(|| None);
     let balance_cache: Signal<std::collections::HashMap<String, String>> =
         use_signal(std::collections::HashMap::new);
+    let mut buddy_messages: Signal<Vec<(String, f64)>> = use_signal(Vec::new);
+    let mut prev_block_nums: Signal<std::collections::HashMap<u64, u64>> =
+        use_signal(std::collections::HashMap::new);
 
     // Ethereum connection effect: reacts to settings changes
     #[cfg(target_arch = "wasm32")]
@@ -162,6 +165,39 @@ pub fn WorkbookShell() -> Element {
             }
             #[cfg(not(target_arch = "wasm32"))]
             let _ = (&addrs, &rpc_url);
+        });
+    }
+
+    // Detect new blocks and push buddy chat messages
+    {
+        use_effect(move || {
+            let heads = block_heads.read();
+            let mut prev = prev_block_nums.write();
+            let now = js_sys_now();
+            for (chain_id, bh) in heads.iter() {
+                let is_new = prev.get(chain_id).map(|n| *n != bh.number).unwrap_or(true);
+                if is_new {
+                    prev.insert(*chain_id, bh.number);
+                    buddy_messages
+                        .write()
+                        .push((format!("#{} chain {}", bh.number, chain_id), now));
+                }
+            }
+        });
+    }
+
+    // Auto-dismiss buddy messages after 3 seconds
+    {
+        use_effect(move || {
+            let msgs = buddy_messages.read().clone();
+            if msgs.is_empty() {
+                return;
+            }
+            let now = js_sys_now();
+            let fresh: Vec<_> = msgs.into_iter().filter(|(_, t)| now - t < 3000.0).collect();
+            if fresh.len() != buddy_messages.read().len() {
+                buddy_messages.set(fresh);
+            }
         });
     }
 
@@ -493,7 +529,7 @@ pub fn WorkbookShell() -> Element {
             div { class: "starfield-layer stars-sm" }
             div { class: "starfield-layer stars-md" }
             div { class: "starfield-layer stars-lg" }
-            BuddyCharacter {}
+            BuddyCharacter { messages: buddy_messages.read().clone() }
 
             // Sheet tabs (top bar) + last saved timestamp
             div { class: "tabs-row",
@@ -1674,6 +1710,20 @@ async fn fetch_balances(
                 );
             }
         }
+    }
+}
+
+fn js_sys_now() -> f64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        js_sys::Date::now()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as f64)
+            .unwrap_or(0.0)
     }
 }
 
