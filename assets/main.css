@@ -840,12 +840,27 @@ body {
     margin-top: 4px;
 }
 
-.settings-hint.rpc-test-ok {
+.rpc-test-result {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    margin-top: 4px;
+    font-weight: 500;
+}
+
+.rpc-test-result.rpc-test-ok {
     color: #4caf50;
 }
 
-.settings-hint.rpc-test-err {
+.rpc-test-result.rpc-test-err {
     color: #ef5350;
+}
+
+.rpc-test-icon {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
 }
 
 .settings-block-info {

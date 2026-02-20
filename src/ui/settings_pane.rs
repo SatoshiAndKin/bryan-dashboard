@@ -104,17 +104,20 @@ pub fn SettingsPane(
                                                 span { class: "settings-hint", "Testing..." }
                                             },
                                             Some(RpcTestResult::Ok(chain_id)) => rsx! {
-                                                span { class: "settings-hint rpc-test-ok",
-                                                    "eth_chainId returned {chain_id}"
+                                                span { class: "rpc-test-result rpc-test-ok",
+                                                    span { class: "rpc-test-icon", "\u{2713}" }
+                                                    "Chain {chain_id} OK"
                                                 }
                                             },
                                             Some(RpcTestResult::ChainMismatch { expected, got }) => rsx! {
-                                                span { class: "settings-hint rpc-test-err",
+                                                span { class: "rpc-test-result rpc-test-err",
+                                                    span { class: "rpc-test-icon", "\u{2717}" }
                                                     "Chain ID mismatch: expected {expected}, got {got}"
                                                 }
                                             },
                                             Some(RpcTestResult::Error(msg)) => rsx! {
-                                                span { class: "settings-hint rpc-test-err",
+                                                span { class: "rpc-test-result rpc-test-err",
+                                                    span { class: "rpc-test-icon", "\u{2717}" }
                                                     "{msg}"
                                                 }
                                             },

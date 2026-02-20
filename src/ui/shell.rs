@@ -126,16 +126,16 @@ pub fn WorkbookShell() -> Element {
 
     // Recalculate all formulas when block_head changes (for BLOCK_NUMBER etc)
     {
-        let heads = block_heads.read().clone();
-        let bh = heads.get(&1).cloned();
-        let cache = balance_cache.read().clone();
-        let rpc_url = settings
-            .read()
-            .rpc_for_chain(1)
-            .and_then(|e| e.primary_url())
-            .unwrap_or_default();
         use_effect(move || {
+            let heads = block_heads.read();
+            let bh = heads.get(&1).cloned();
             let bh_ref = bh.as_ref();
+            let cache = balance_cache.read().clone();
+            let rpc_url = settings
+                .read()
+                .rpc_for_chain(1)
+                .and_then(|e| e.primary_url())
+                .unwrap_or_default();
             let pending = std::cell::RefCell::new(Vec::<String>::new());
             let mut wb = workbook.write();
             for sheet in &mut wb.sheets {
@@ -231,6 +231,21 @@ pub fn WorkbookShell() -> Element {
         div {
             class: "workbook-shell",
             tabindex: "0",
+            autofocus: true,
+            onclick: move |_| {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    use wasm_bindgen::JsCast;
+                    if let Some(el) = web_sys::window()
+                        .and_then(|w| w.document())
+                        .and_then(|d| d.query_selector(".workbook-shell").ok().flatten())
+                    {
+                        if let Ok(html_el) = el.dyn_into::<web_sys::HtmlElement>() {
+                            let _ = html_el.focus();
+                        }
+                    }
+                }
+            },
             onkeydown: move |e| {
                 let ctrl = e.modifiers().meta() || e.modifiers().ctrl();
                 let shift = e.modifiers().shift();

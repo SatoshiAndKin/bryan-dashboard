@@ -62,7 +62,6 @@ pub fn CellView(
             "aria-label": "{aria_label}",
             "aria-selected": if is_selected { "true" } else { "false" },
             "aria-readonly": if is_header { "true" } else { "false" },
-            tabindex: if is_selected { "0" } else { "-1" },
             draggable: if has_content && !is_editing { "true" } else { "false" },
             onclick: move |e| {
                 if !is_editing {
