@@ -80,17 +80,22 @@ body {
 }
 
 .tab.add-tab {
-    color: #6878a8;
-    font-size: 14px;
-    font-weight: 500;
+    color: #4a5a7a;
+    font-size: 16px;
+    font-weight: 400;
     padding: 4px 12px;
-    opacity: 0.7;
+    opacity: 0.6;
     transition: opacity 0.15s, color 0.15s;
+    background: transparent;
+    border: 1px dashed #2a3a5a;
+    border-radius: 6px 6px 0 0;
 }
 
 .tab.add-tab:hover {
     color: #4a90d9;
     opacity: 1;
+    border-color: #4a90d9;
+    background: rgba(74, 144, 217, 0.08);
 }
 
 .tab-delete {
@@ -231,20 +236,26 @@ body {
 
 .formula-bar {
     flex: 1;
-    background: #0d1b2a;
-    border: 1px solid #0f3460;
-    padding: 3px 8px;
-    border-radius: 3px;
+    background: #0a1525;
+    border: 1px solid #4ac9d9;
+    padding: 5px 10px;
+    border-radius: 4px;
     font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 12px;
-    color: #e0e0e0;
+    font-size: 13px;
+    color: #fff;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    box-shadow: 0 0 6px rgba(74, 201, 217, 0.15);
 }
 
 .formula-bar.readonly {
     color: #8888a8;
+    border-color: #0f3460;
+    background: #0d1b2a;
+    box-shadow: none;
+    font-size: 12px;
+    padding: 3px 8px;
 }
 
 /* Formula Bar Row */
@@ -252,25 +263,32 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 12px;
+    padding: 6px 12px;
     background: #16213e;
-    border-bottom: 1px solid #0f3460;
+    border-bottom: 2px solid #0f3460;
     flex-shrink: 0;
-    min-height: 30px;
+    min-height: 36px;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.formula-bar-row:has(.formula-bar:not(.readonly)) {
+    background: #1a2a4e;
+    border-bottom-color: #4ac9d9;
 }
 
 /* Sheet Content (canvas + sidebar) */
 .sheet-content {
     display: flex;
     flex: 1;
-    overflow: hidden;
+    overflow: auto;
+    position: relative;
 }
 
 /* Canvas area — all tables rendered here, Numbers-style */
 .canvas-area {
-    flex: 1;
-    min-width: 0;
-    overflow: auto;
+    min-width: min-content;
+    min-height: min-content;
+    overflow: visible;
     background: #0a0a1a;
     padding: 24px;
     display: flex;
@@ -278,6 +296,7 @@ body {
     gap: 32px;
     align-items: flex-start;
     position: relative;
+    flex-shrink: 0;
 }
 
 .starfield {
@@ -359,12 +378,14 @@ body {
 .sheet-view {
     overflow: visible;
     background: #1a1a2e;
+    width: fit-content;
 }
 
 /* Grid Table */
 .grid-table {
     border-collapse: collapse;
     table-layout: fixed;
+    width: auto;
 }
 
 .corner-cell {
@@ -514,25 +535,21 @@ body {
 }
 
 /* Scrollbar */
-.canvas-area::-webkit-scrollbar,
-.sheet-view::-webkit-scrollbar {
+.sheet-content::-webkit-scrollbar {
     width: 10px;
     height: 10px;
 }
 
-.canvas-area::-webkit-scrollbar-track,
-.sheet-view::-webkit-scrollbar-track {
+.sheet-content::-webkit-scrollbar-track {
     background: #0d1b2a;
 }
 
-.canvas-area::-webkit-scrollbar-thumb,
-.sheet-view::-webkit-scrollbar-thumb {
+.sheet-content::-webkit-scrollbar-thumb {
     background: #2a3a5a;
     border-radius: 5px;
 }
 
-.canvas-area::-webkit-scrollbar-thumb:hover,
-.sheet-view::-webkit-scrollbar-thumb:hover {
+.sheet-content::-webkit-scrollbar-thumb:hover {
     background: #3a5a8a;
 }
 
