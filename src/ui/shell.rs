@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::eth::BlockHead;
-use crate::formula::graph::{recalculate_table, recalculate_table_full};
+use crate::formula::graph::{recalculate_table, recalculate_table_with_ctx};
 use crate::model::cell::col_index_to_label;
 use crate::model::settings::AppSettings;
 use crate::model::sheet::SheetId;
@@ -52,6 +52,8 @@ pub fn WorkbookShell() -> Element {
     let mut show_settings = use_signal(|| false);
     let block_head: Signal<Option<BlockHead>> = use_signal(|| None);
     let mut last_saved: Signal<Option<String>> = use_signal(|| None);
+    let balance_cache: Signal<std::collections::HashMap<String, String>> =
+        use_signal(std::collections::HashMap::new);
 
     // Ethereum connection effect: reacts to settings changes
     #[cfg(target_arch = "wasm32")]
@@ -69,14 +71,30 @@ pub fn WorkbookShell() -> Element {
     // Recalculate all formulas when block_head changes (for BLOCK_NUMBER etc)
     {
         let bh = block_head.read().clone();
+        let cache = balance_cache.read().clone();
+        let rpc_url = settings.read().rpc_url.clone();
         use_effect(move || {
             let bh_ref = bh.as_ref();
+            let pending = std::cell::RefCell::new(Vec::<String>::new());
             let mut wb = workbook.write();
             for sheet in &mut wb.sheets {
                 for table in &mut sheet.tables {
-                    recalculate_table_full(table, &[], bh_ref);
+                    recalculate_table_with_ctx(table, &[], bh_ref, Some(&cache), Some(&pending));
                 }
             }
+            drop(wb);
+            // Fetch balances for any pending addresses
+            let addrs = pending.into_inner();
+            #[cfg(target_arch = "wasm32")]
+            if !addrs.is_empty() && !rpc_url.is_empty() {
+                let url = rpc_url.clone();
+                let mut bc = balance_cache;
+                spawn(async move {
+                    fetch_balances(&url, &addrs, &mut bc).await;
+                });
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            let _ = (&addrs, &rpc_url);
         });
     }
 
@@ -1006,6 +1024,35 @@ async fn fetch_json_rpc(url: &str, body: &str) -> Result<serde_json::Value, Stri
         .ok_or("stringify failed")?;
 
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn fetch_balances(
+    url: &str,
+    addrs: &[String],
+    cache: &mut Signal<std::collections::HashMap<String, String>>,
+) {
+    for addr in addrs {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "eth_getBalance",
+            "params": [addr, "latest"]
+        })
+        .to_string();
+        match fetch_json_rpc(url, &body).await {
+            Ok(val) => {
+                if let Some(result) = val.get("result").and_then(|v| v.as_str()) {
+                    cache.write().insert(addr.clone(), result.to_string());
+                }
+            }
+            Err(e) => {
+                web_sys::console::error_1(
+                    &format!("eth_getBalance failed for {}: {}", addr, e).into(),
+                );
+            }
+        }
+    }
 }
 
 fn now_string() -> String {

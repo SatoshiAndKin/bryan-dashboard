@@ -13,6 +13,10 @@ pub struct EvalContext<'a> {
     pub all_tables: Vec<(&'a str, &'a TableModel)>,
     /// Latest block head from Ethereum RPC (if connected)
     pub block_head: Option<&'a BlockHead>,
+    /// Cache of eth_getBalance results: address -> wei balance as string
+    pub balance_cache: Option<&'a std::collections::HashMap<String, String>>,
+    /// Addresses that need balance lookups (collected during eval)
+    pub pending_lookups: Option<&'a std::cell::RefCell<Vec<String>>>,
 }
 
 impl<'a> EvalContext<'a> {
@@ -23,6 +27,8 @@ impl<'a> EvalContext<'a> {
             siblings: &[],
             all_tables: Vec::new(),
             block_head: None,
+            balance_cache: None,
+            pending_lookups: None,
         }
     }
 
@@ -32,6 +38,8 @@ impl<'a> EvalContext<'a> {
             siblings,
             all_tables: Vec::new(),
             block_head: None,
+            balance_cache: None,
+            pending_lookups: None,
         }
     }
 
@@ -46,6 +54,8 @@ impl<'a> EvalContext<'a> {
             siblings,
             all_tables,
             block_head: None,
+            balance_cache: None,
+            pending_lookups: None,
         }
     }
 
@@ -212,6 +222,43 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
             } else {
                 CellValue::Error("#NO_RPC!".to_string())
             }
+        }
+        "ETH_BALANCE" => {
+            if args.is_empty() {
+                return CellValue::Error("#ARGS! ETH_BALANCE(address)".to_string());
+            }
+            let addr_val = evaluate(&args[0], ctx);
+            let addr = match &addr_val {
+                CellValue::Text(s) => s.trim().to_lowercase(),
+                CellValue::Number(n) => format!("{}", n),
+                _ => return CellValue::Error("#VALUE! address required".to_string()),
+            };
+            if !addr.starts_with("0x") || addr.len() != 42 {
+                return CellValue::Error("#VALUE! invalid address".to_string());
+            }
+            // Check cache
+            if let Some(cache) = ctx.balance_cache {
+                if let Some(hex_balance) = cache.get(&addr) {
+                    // Parse hex balance to f64 (in wei)
+                    let s = hex_balance.strip_prefix("0x").unwrap_or(hex_balance);
+                    match u128::from_str_radix(s, 16) {
+                        Ok(wei) => {
+                            // Convert to ETH (divide by 1e18)
+                            let eth = wei as f64 / 1e18;
+                            return CellValue::Number(eth);
+                        }
+                        Err(_) => return CellValue::Error("#PARSE! balance".to_string()),
+                    }
+                }
+            }
+            // Not cached: request lookup
+            if let Some(pending) = ctx.pending_lookups {
+                let mut p = pending.borrow_mut();
+                if !p.contains(&addr) {
+                    p.push(addr);
+                }
+            }
+            CellValue::Text("#LOADING...".to_string())
         }
         _ => CellValue::Error(format!("#NAME? {}", name)),
     }

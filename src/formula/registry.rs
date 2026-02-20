@@ -40,6 +40,11 @@ pub const BUILTIN_FUNCTIONS: &[FuncInfo] = &[
         syntax: "BASE_FEE()",
         description: "Returns the latest block base fee in wei.",
     },
+    FuncInfo {
+        name: "ETH_BALANCE",
+        syntax: "ETH_BALANCE(address)",
+        description: "Returns the ETH balance of an address (in ETH).",
+    },
 ];
 
 pub const OPERATORS: &[FuncInfo] = &[

@@ -53,6 +53,17 @@ pub fn recalculate_table_full(
     siblings: &[TableModel],
     block_head: Option<&BlockHead>,
 ) {
+    let pending = std::cell::RefCell::new(Vec::<String>::new());
+    recalculate_table_with_ctx(table, siblings, block_head, None, Some(&pending));
+}
+
+pub fn recalculate_table_with_ctx(
+    table: &mut TableModel,
+    siblings: &[TableModel],
+    block_head: Option<&BlockHead>,
+    balance_cache: Option<&std::collections::HashMap<String, String>>,
+    pending_lookups: Option<&std::cell::RefCell<Vec<String>>>,
+) {
     let mut dependencies: HashMap<(u32, u32), Vec<(u32, u32)>> = HashMap::new();
     let mut formulas: HashMap<(u32, u32), Expr> = HashMap::new();
 
@@ -90,6 +101,8 @@ pub fn recalculate_table_full(
                 if let Some(expr) = formulas.get(&key) {
                     let mut ctx = EvalContext::with_siblings(table, siblings);
                     ctx.block_head = block_head;
+                    ctx.balance_cache = balance_cache;
+                    ctx.pending_lookups = pending_lookups;
                     let val = evaluate(expr, &ctx);
                     if let Some(cell) = table.cells.get_mut(&key) {
                         cell.computed = val;
