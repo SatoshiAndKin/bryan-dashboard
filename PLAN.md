@@ -1,5 +1,16 @@
 # Bryan Dashboard — Spreadsheet App Implementation Plan
 
+i keep finding opportunities that are a pain to check. i need bettter tools to do what im actually doing. not tools to trade in ways that i'm not. 
+
+i need to be able to make a trade using the best path without having to think about where that best path is. i keep hard coding ones and i know thats suboptimal (especially on small trades. big trades, the common paths are best).
+
+so right now. im looking at a trade of ETH to ARM. its 0.4 to 0.373668819974811901. but its a vault. so its not expected to be 1:1.
+- i need to see whenever its underlying ETH value is imbalanced
+
+also, there might be a profitable path for oeth that does ETH -> mint OETH -> ARM -> ETH. so thats a mint rather than a trade
+
+i think dioxus is the right tool for this. i kind of want to use bevy, but i don't think its the right tool.
+
 ## Overview
 A Dioxus 0.7 web-only spreadsheet app (Numbers/Excel-like) with multiple named tables,
 resizable rows/columns, double-click in-place cell editing, and a formula DSL.

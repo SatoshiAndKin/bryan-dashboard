@@ -24,12 +24,67 @@ use crate::ui::grid::SheetView;
 use crate::ui::settings_pane::SettingsPane;
 use crate::ui::tabs::SheetTabsPanel;
 
+use crate::model::sheet::Sheet;
+
+fn snap_no_overlap(sheet: &mut Sheet, moved_tid: TableId) {
+    let gap = 16.0_f32;
+    for _ in 0..20 {
+        let mut nudged = false;
+        let rects: Vec<_> = sheet
+            .tables
+            .iter()
+            .map(|t| {
+                (
+                    t.id,
+                    t.canvas_x,
+                    t.canvas_y,
+                    t.pixel_width(),
+                    t.pixel_height(),
+                )
+            })
+            .collect();
+        for &(oid, ox, oy, ow, oh) in &rects {
+            if oid == moved_tid {
+                continue;
+            }
+            let idx = sheet.tables.iter().position(|t| t.id == moved_tid).unwrap();
+            let t = &sheet.tables[idx];
+            let (tx, ty, tw, th) = (t.canvas_x, t.canvas_y, t.pixel_width(), t.pixel_height());
+            let overlap_x = (tx < ox + ow + gap) && (tx + tw + gap > ox);
+            let overlap_y = (ty < oy + oh + gap) && (ty + th + gap > oy);
+            if overlap_x && overlap_y {
+                let push_right = ox + ow + gap - tx;
+                let push_left = tx + tw + gap - ox;
+                let push_down = oy + oh + gap - ty;
+                let push_up = ty + th + gap - oy;
+                let min_push = push_right.min(push_left).min(push_down).min(push_up);
+                let t = &mut sheet.tables[idx];
+                if min_push == push_right {
+                    t.canvas_x += push_right;
+                } else if min_push == push_left {
+                    t.canvas_x -= push_left;
+                } else if min_push == push_down {
+                    t.canvas_y += push_down;
+                } else {
+                    t.canvas_y -= push_up;
+                }
+                t.canvas_x = t.canvas_x.max(0.0);
+                t.canvas_y = t.canvas_y.max(0.0);
+                nudged = true;
+            }
+        }
+        if !nudged {
+            break;
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum PendingDelete {
     Sheet(SheetId, String),
     Table(TableId, String),
-    Row(TableId, u32),
-    Col(TableId, u32),
+    Rows(TableId, u32, u32), // (tid, min_row, max_row)
+    Cols(TableId, u32, u32), // (tid, min_col, max_col)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,6 +167,8 @@ pub fn WorkbookShell() -> Element {
     let balance_cache: Signal<std::collections::HashMap<String, String>> =
         use_signal(std::collections::HashMap::new);
     let mut buddy_messages: Signal<Vec<(String, f64)>> = use_signal(Vec::new);
+    // Table header drag state: (table_id, start_mouse_x, start_mouse_y, start_canvas_x, start_canvas_y)
+    let mut table_drag: Signal<Option<(TableId, f64, f64, f32, f32)>> = use_signal(|| None);
     let mut prev_block_nums: Signal<std::collections::HashMap<u64, u64>> =
         use_signal(std::collections::HashMap::new);
 
@@ -269,7 +326,6 @@ pub fn WorkbookShell() -> Element {
     });
 
     let sel_info = selected.map(|(_tid, col, row)| (col, row));
-    let sel_table_id = selected.map(|(tid, _, _)| tid);
     let sel_source = selected
         .and_then(|(tid, col, row)| {
             active_sheet
@@ -284,7 +340,7 @@ pub fn WorkbookShell() -> Element {
         active_sheet
             .as_ref()
             .and_then(|s| s.table_by_id(tid))
-            .map(|t| {
+            .and_then(|t| {
                 let pretty = t.prettify_formula(&sel_source);
                 if pretty != sel_source {
                     Some(pretty)
@@ -292,7 +348,20 @@ pub fn WorkbookShell() -> Element {
                     None
                 }
             })
-            .flatten()
+    });
+
+    let edit_pretty = editing.and_then(|(tid, _col, _row)| {
+        active_sheet
+            .as_ref()
+            .and_then(|s| s.table_by_id(tid))
+            .and_then(|t| {
+                let pretty = t.prettify_formula(&edit_buffer);
+                if pretty != edit_buffer {
+                    Some(pretty)
+                } else {
+                    None
+                }
+            })
     });
 
     let sel_format = selected.and_then(|(tid, col, row)| {
@@ -487,35 +556,63 @@ pub fn WorkbookShell() -> Element {
                                 Key::ArrowDown => (col, (row + 1).min(max_r - 1)),
                                 Key::ArrowLeft => (col.saturating_sub(1), row),
                                 Key::ArrowRight => ((col + 1).min(max_c - 1), row),
-                                Key::Tab if shift => (col.saturating_sub(1), row),
-                                Key::Tab => ((col + 1).min(max_c - 1), row),
+                                Key::Tab => {
+                                    e.prevent_default();
+                                    let wb = workbook.read();
+                                    if let Some(sheet) = wb.active_sheet() {
+                                        let ids: Vec<_> = sheet.tables.iter().map(|t| t.id).collect();
+                                        if let Some(pos) = ids.iter().position(|&id| id == tid) {
+                                            let next = if shift {
+                                                if pos == 0 { ids.len() - 1 } else { pos - 1 }
+                                            } else {
+                                                (pos + 1) % ids.len()
+                                            };
+                                            let next_tid = ids[next];
+                                            drop(wb);
+                                            let mut u = ui.write();
+                                            u.selected = Some((next_tid, 0, 0));
+                                            u.selection_anchor = Some((next_tid, 0, 0));
+                                            u.selection_end = None;
+                                        }
+                                    }
+                                    return;
+                                }
                                 Key::Enter => (col, (row + 1).min(max_r - 1)),
+                                Key::Escape => {
+                                    e.prevent_default();
+                                    let mut u = ui.write();
+                                    u.selected = None;
+                                    u.selection_anchor = None;
+                                    u.selection_end = None;
+                                    return;
+                                }
                                 Key::Backspace | Key::Delete => {
                                     e.prevent_default();
-                                    let old_source = {
-                                        let wb = workbook.read();
-                                        wb.active_sheet()
-                                            .and_then(|s| s.table_by_id(tid))
-                                            .and_then(|t| t.cells.get(&(col, row)))
-                                            .map(|c| c.source.clone())
-                                            .unwrap_or_default()
-                                    };
-                                    if !old_source.is_empty() {
+                                    // Delete all cells in selection range
+                                    let range = ui.read().selection_range();
+                                    if let Some((range_tid, min_c, min_r, max_c, max_r)) = range {
+                                        let mut any_changed = false;
                                         let mut wb = workbook.write();
                                         if let Some(sheet) = wb.active_sheet_mut() {
-                                            if let Some(table) = sheet.table_by_id_mut(tid) {
-                                                table.set_cell_source(col, row, String::new());
-                                                recalculate_table(table);
+                                            if let Some(table) = sheet.table_by_id_mut(range_tid) {
+                                                for dc in min_c..=max_c {
+                                                    for dr in min_r..=max_r {
+                                                        let old = table.cells.get(&(dc, dr))
+                                                            .map(|c| c.source.clone())
+                                                            .unwrap_or_default();
+                                                        if !old.is_empty() {
+                                                            table.set_cell_source(dc, dr, String::new());
+                                                            any_changed = true;
+                                                        }
+                                                    }
+                                                }
+                                                if any_changed { recalculate_table(table); }
                                             }
-                                            sheet.recalculate_dependents(tid);
+                                            if any_changed { sheet.recalculate_dependents(range_tid); }
                                         }
-                                        save_workbook(&wb); last_saved.set(Some(now_string()));
-                                        let mut u = ui.write();
-                                        u.undo_stack.push(UndoEntry {
-                                            table_id: tid, col, row,
-                                            old_source, new_source: String::new(),
-                                        });
-                                        u.redo_stack.clear();
+                                        if any_changed {
+                                            save_workbook(&wb); last_saved.set(Some(now_string()));
+                                        }
                                     }
                                     return;
                                 }
@@ -936,24 +1033,26 @@ pub fn WorkbookShell() -> Element {
                     }
                 }
 
-                if let Some((_col, row)) = sel_info {
+                if sel_info.is_some() {
                     span { class: "toolbar-separator" }
                     button {
                         class: "toolbar-btn danger",
                         onclick: move |_| {
-                            if let Some(tid) = sel_table_id {
-                                pending_delete.set(Some(PendingDelete::Row(tid, row)));
+                            let range = ui.read().selection_range();
+                            if let Some((tid, _mc, min_r, _xc, max_r)) = range {
+                                pending_delete.set(Some(PendingDelete::Rows(tid, min_r, max_r)));
                             }
                         },
                         "- Row"
                     }
                 }
-                if let Some((col, _row)) = sel_info {
+                if sel_info.is_some() {
                     button {
                         class: "toolbar-btn danger",
                         onclick: move |_| {
-                            if let Some(tid) = sel_table_id {
-                                pending_delete.set(Some(PendingDelete::Col(tid, col)));
+                            let range = ui.read().selection_range();
+                            if let Some((tid, min_c, _mr, max_c, _xr)) = range {
+                                pending_delete.set(Some(PendingDelete::Cols(tid, min_c, max_c)));
                             }
                         },
                         "- Col"
@@ -969,8 +1068,11 @@ pub fn WorkbookShell() -> Element {
                     }
                 }
                 if editing.is_some() {
-                    span { class: "formula-bar",
-                        "{edit_buffer}"
+                    if let Some(ref pretty) = edit_pretty {
+                        span { class: "formula-bar", "{pretty}" }
+                        span { class: "formula-bar-raw", "{edit_buffer}" }
+                    } else {
+                        span { class: "formula-bar", "{edit_buffer}" }
                     }
                 } else if !sel_source.is_empty() {
                     if let Some(ref pretty) = sel_pretty_source {
@@ -985,6 +1087,33 @@ pub fn WorkbookShell() -> Element {
             // Canvas with tables from active sheet
             div { class: "sheet-content-wrapper",
             div { class: "sheet-content",
+                onmousemove: move |e: MouseEvent| {
+                    if let Some((drag_tid, sx, sy, cx, cy)) = *table_drag.read() {
+                        let dx = e.page_coordinates().x - sx;
+                        let dy = e.page_coordinates().y - sy;
+                        let new_x = (cx as f64 + dx).max(0.0) as f32;
+                        let new_y = (cy as f64 + dy).max(0.0) as f32;
+                        let mut wb = workbook.write();
+                        if let Some(sheet) = wb.active_sheet_mut() {
+                            if let Some(table) = sheet.table_by_id_mut(drag_tid) {
+                                table.canvas_x = new_x;
+                                table.canvas_y = new_y;
+                            }
+                        }
+                    }
+                },
+                onmouseup: move |_| {
+                    let drag_info = *table_drag.read();
+                    if let Some((drag_tid, _, _, _, _)) = drag_info {
+                        let mut wb = workbook.write();
+                        if let Some(sheet) = wb.active_sheet_mut() {
+                            snap_no_overlap(sheet, drag_tid);
+                        }
+                        save_workbook(&wb);
+                        last_saved.set(Some(now_string()));
+                        table_drag.set(None);
+                    }
+                },
                 div { class: "canvas-area",
                     if let Some(sheet) = &active_sheet {
                         for table in &sheet.tables {
@@ -1000,10 +1129,22 @@ pub fn WorkbookShell() -> Element {
                                     .and_then(|(t, mc, mr, xc, xr)| if t == tid { Some((mc, mr, xc, xr)) } else { None });
                                 let t_edit_buffer = if t_editing.is_some() { edit_buffer.clone() } else { String::new() };
                                 let can_delete_table = sheet.tables.len() > 1;
+                                let tx = table.canvas_x;
+                                let ty = table.canvas_y;
                                 rsx! {
                                     div {
                                         class: if is_active { "canvas-table active" } else { "canvas-table" },
+                                        style: "left: {tx}px; top: {ty}px;",
                                         div { class: "canvas-table-header",
+                                            onmousedown: move |e: MouseEvent| {
+                                                e.prevent_default();
+                                                let wb = workbook.read();
+                                                if let Some(sheet) = wb.active_sheet() {
+                                                    if let Some(t) = sheet.table_by_id(tid) {
+                                                        table_drag.set(Some((tid, e.page_coordinates().x, e.page_coordinates().y, t.canvas_x, t.canvas_y)));
+                                                    }
+                                                }
+                                            },
                                             span { class: "canvas-table-name", "{table_name}" }
                                             if can_delete_table {
                                                 button {
@@ -1305,8 +1446,20 @@ pub fn WorkbookShell() -> Element {
                     let msg = match &pd {
                         PendingDelete::Sheet(_, name) => format!("Delete sheet \"{}\"? All tables and data in it will be lost.", name),
                         PendingDelete::Table(_, name) => format!("Delete table \"{}\"? All data in it will be lost.", name),
-                        PendingDelete::Row(_, row) => format!("Delete row {}?", row + 1),
-                        PendingDelete::Col(_, col) => format!("Delete column {}?", col_index_to_label(*col)),
+                        PendingDelete::Rows(_, min_r, max_r) => {
+                            if min_r == max_r {
+                                format!("Delete row {}?", min_r + 1)
+                            } else {
+                                format!("Delete rows {} through {}?", min_r + 1, max_r + 1)
+                            }
+                        }
+                        PendingDelete::Cols(_, min_c, max_c) => {
+                            if min_c == max_c {
+                                format!("Delete column {}?", col_index_to_label(*min_c))
+                            } else {
+                                format!("Delete columns {} through {}?", col_index_to_label(*min_c), col_index_to_label(*max_c))
+                            }
+                        }
                     };
                     rsx! {
                         ConfirmModal {
@@ -1337,13 +1490,15 @@ pub fn WorkbookShell() -> Element {
                                             u.editing_sheet_id = None;
                                         }
                                     }
-                                    PendingDelete::Row(tid, row) => {
+                                    PendingDelete::Rows(tid, min_r, max_r) => {
                                         let tid = *tid;
-                                        let row = *row;
                                         let mut wb = workbook.write();
                                         if let Some(sheet) = wb.active_sheet_mut() {
                                             if let Some(table) = sheet.table_by_id_mut(tid) {
-                                                table.delete_row(row);
+                                                // Delete from bottom to top so indices stay valid
+                                                for r in (*min_r..=*max_r).rev() {
+                                                    table.delete_row(r);
+                                                }
                                                 recalculate_table(table);
                                             }
                                             sheet.recalculate_dependents(tid);
@@ -1351,16 +1506,20 @@ pub fn WorkbookShell() -> Element {
                                         save_workbook(&wb); last_saved.set(Some(now_string()));
                                         let mut u = ui.write();
                                         u.selected = None;
+                                        u.selection_anchor = None;
+                                        u.selection_end = None;
                                         u.editing = None;
                                         u.editing_sheet_id = None;
                                     }
-                                    PendingDelete::Col(tid, col) => {
+                                    PendingDelete::Cols(tid, min_c, max_c) => {
                                         let tid = *tid;
-                                        let col = *col;
                                         let mut wb = workbook.write();
                                         if let Some(sheet) = wb.active_sheet_mut() {
                                             if let Some(table) = sheet.table_by_id_mut(tid) {
-                                                table.delete_col(col);
+                                                // Delete from right to left so indices stay valid
+                                                for c in (*min_c..=*max_c).rev() {
+                                                    table.delete_col(c);
+                                                }
                                                 recalculate_table(table);
                                             }
                                             sheet.recalculate_dependents(tid);
@@ -1368,6 +1527,8 @@ pub fn WorkbookShell() -> Element {
                                         save_workbook(&wb); last_saved.set(Some(now_string()));
                                         let mut u = ui.write();
                                         u.selected = None;
+                                        u.selection_anchor = None;
+                                        u.selection_end = None;
                                         u.editing = None;
                                         u.editing_sheet_id = None;
                                     }

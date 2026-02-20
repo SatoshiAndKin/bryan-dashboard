@@ -351,12 +351,10 @@ body {
     overflow: visible;
     background: transparent;
     padding: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 32px;
-    align-items: flex-start;
     position: relative;
     flex-shrink: 0;
+    width: 4000px;
+    height: 3000px;
 }
 
 /* CSS Starfield — box-shadow star layers + sparkle shapes */
@@ -370,47 +368,55 @@ body {
     z-index: 0;
 }
 
-/* Small dim stars — many, subtle */
+/* Small stars — white dots scattered across the sky */
 .starfield-layer.stars-sm {
     box-shadow:
-        42px 38px #3a3f5c, 190px 72px #3e4260, 331px 156px #36394e,
-        480px 91px #3c3f58, 612px 204px #383c55, 759px 63px #34384d,
-        907px 175px #3a3e58, 98px 308px #36394e, 257px 357px #3e4260,
-        411px 287px #383c55, 558px 339px #3c3f58, 709px 390px #36394e,
-        860px 318px #3a3f5c, 1007px 298px #34384d, 137px 458px #383c55,
-        359px 512px #3e4260, 527px 478px #3a3f5c, 688px 528px #36394e,
-        831px 490px #3c3f58, 968px 447px #34384d, 73px 590px #383c55,
-        220px 620px #3a3e58, 430px 650px #3c3f58, 590px 610px #36394e,
-        780px 580px #3e4260, 920px 640px #34384d, 160px 180px #383c55,
-        500px 140px #3a3f5c, 820px 240px #36394e, 300px 420px #3e4260;
+        42px 38px #aab, 190px 72px #99a, 331px 156px #bbc,
+        480px 91px #aab, 612px 204px #99a, 759px 63px #bbc,
+        907px 175px #aab, 98px 308px #99a, 257px 357px #bbc,
+        411px 287px #aab, 558px 339px #99a, 709px 390px #bbc,
+        860px 318px #aab, 1007px 298px #99a, 137px 458px #bbc,
+        359px 512px #aab, 527px 478px #bbc, 688px 528px #99a,
+        831px 490px #aab, 968px 447px #bbc, 73px 590px #99a,
+        220px 620px #aab, 430px 650px #bbc, 590px 610px #99a,
+        780px 580px #aab, 920px 640px #bbc, 160px 180px #99a,
+        500px 140px #aab, 820px 240px #bbc, 300px 420px #99a,
+        1100px 100px #aab, 1250px 250px #bbc, 1400px 180px #99a,
+        1150px 400px #aab, 1300px 350px #bbc, 1050px 500px #99a,
+        50px 700px #aab, 200px 750px #bbc, 400px 720px #99a,
+        650px 680px #aab, 850px 730px #bbc, 1050px 650px #99a;
     animation: twinkle-sm 4s ease-in-out infinite alternate;
 }
 
-/* Medium stars — softer glow via larger shadow spread */
+/* Medium stars — brighter with a soft glow */
 .starfield-layer.stars-md {
     box-shadow:
-        125px 168px rgba(180,190,220,0.8), 125px 168px 2px rgba(140,160,210,0.3),
-        388px 86px rgba(175,188,215,0.75), 388px 86px 2px rgba(140,160,210,0.25),
-        648px 248px rgba(185,195,225,0.7), 648px 248px 2px rgba(140,160,210,0.3),
-        208px 408px rgba(180,192,220,0.8), 208px 408px 2px rgba(140,160,210,0.25),
-        508px 358px rgba(175,188,215,0.7), 508px 358px 2px rgba(140,160,210,0.3),
-        788px 138px rgba(185,195,225,0.75), 788px 138px 2px rgba(140,160,210,0.25),
-        928px 388px rgba(180,190,220,0.7), 928px 388px 2px rgba(140,160,210,0.3),
-        68px 528px rgba(175,188,215,0.8), 68px 528px 2px rgba(140,160,210,0.25),
-        448px 488px rgba(185,195,225,0.7), 448px 488px 2px rgba(140,160,210,0.3),
-        708px 508px rgba(180,190,220,0.75), 708px 508px 2px rgba(140,160,210,0.25);
+        125px 168px #dde, 125px 168px 2px rgba(200,210,255,0.4),
+        388px 86px #ccd, 388px 86px 2px rgba(200,210,255,0.3),
+        648px 248px #dde, 648px 248px 2px rgba(200,210,255,0.4),
+        208px 408px #ccd, 208px 408px 2px rgba(200,210,255,0.3),
+        508px 358px #dde, 508px 358px 2px rgba(200,210,255,0.4),
+        788px 138px #ccd, 788px 138px 2px rgba(200,210,255,0.3),
+        928px 388px #dde, 928px 388px 2px rgba(200,210,255,0.4),
+        68px 528px #ccd, 68px 528px 2px rgba(200,210,255,0.3),
+        448px 488px #dde, 448px 488px 2px rgba(200,210,255,0.4),
+        1200px 300px #ccd, 1200px 300px 2px rgba(200,210,255,0.3),
+        150px 680px #dde, 150px 680px 2px rgba(200,210,255,0.4),
+        750px 620px #ccd, 750px 620px 2px rgba(200,210,255,0.3);
     animation: twinkle-md 3s ease-in-out infinite alternate;
 }
 
-/* Bright stars — visible glow halo */
+/* Bright stars — white core with visible glow halo */
 .starfield-layer.stars-lg {
     box-shadow:
-        258px 208px #e0ddf0, 258px 208px 3px rgba(200,195,240,0.5), 258px 208px 6px rgba(160,150,220,0.2),
-        708px 158px #dde0f5, 708px 158px 3px rgba(180,190,240,0.5), 708px 158px 6px rgba(140,160,220,0.2),
-        458px 428px #f0e8d8, 458px 428px 3px rgba(230,210,170,0.5), 458px 428px 6px rgba(200,180,140,0.2),
-        158px 358px #dde5f5, 158px 358px 3px rgba(180,200,240,0.5), 158px 358px 6px rgba(140,170,220,0.2),
-        858px 308px #f0e0d0, 858px 308px 3px rgba(230,200,160,0.5), 858px 308px 6px rgba(200,170,130,0.2),
-        558px 108px #d8d5f0, 558px 108px 3px rgba(190,180,240,0.5), 558px 108px 6px rgba(150,140,220,0.2);
+        258px 208px #fff, 258px 208px 3px rgba(200,200,255,0.6), 258px 208px 8px rgba(150,150,255,0.25),
+        708px 158px #fff, 708px 158px 3px rgba(200,220,255,0.6), 708px 158px 8px rgba(150,180,255,0.25),
+        458px 428px #ffe, 458px 428px 3px rgba(255,240,200,0.6), 458px 428px 8px rgba(255,220,150,0.25),
+        158px 358px #fff, 158px 358px 3px rgba(200,210,255,0.6), 158px 358px 8px rgba(150,160,255,0.25),
+        858px 308px #ffe, 858px 308px 3px rgba(255,230,180,0.6), 858px 308px 8px rgba(255,200,130,0.25),
+        558px 108px #eef, 558px 108px 3px rgba(200,190,255,0.6), 558px 108px 8px rgba(160,150,255,0.25),
+        1100px 200px #fff, 1100px 200px 3px rgba(200,220,255,0.6), 1100px 200px 8px rgba(150,180,255,0.25),
+        350px 650px #ffe, 350px 650px 3px rgba(255,240,200,0.6), 350px 650px 8px rgba(255,220,150,0.25);
     animation: twinkle-lg 2.5s ease-in-out infinite alternate;
 }
 
@@ -421,85 +427,77 @@ body {
     z-index: 0;
     background: white;
     clip-path: polygon(
-        50% 0%, 60% 35%, 100% 50%, 60% 65%,
-        50% 100%, 40% 65%, 0% 50%, 40% 35%
+        50% 0%, 58% 38%, 100% 50%, 58% 62%,
+        50% 100%, 42% 62%, 0% 50%, 42% 38%
     );
 }
 
 .sparkle-star:nth-child(1) {
-    width: 8px; height: 8px;
+    width: 12px; height: 12px;
     top: 15%; left: 20%;
-    opacity: 0.7;
     animation: sparkle-pulse 3s ease-in-out infinite;
 }
 .sparkle-star:nth-child(2) {
-    width: 12px; height: 12px;
-    top: 35%; left: 70%;
-    opacity: 0.6;
+    width: 18px; height: 18px;
+    top: 35%; left: 72%;
     animation: sparkle-pulse 4s ease-in-out 1s infinite;
 }
 .sparkle-star:nth-child(3) {
-    width: 6px; height: 6px;
-    top: 60%; left: 40%;
-    opacity: 0.5;
+    width: 10px; height: 10px;
+    top: 62%; left: 42%;
     animation: sparkle-pulse 2.5s ease-in-out 0.5s infinite;
 }
 .sparkle-star:nth-child(4) {
-    width: 10px; height: 10px;
-    top: 80%; left: 85%;
-    opacity: 0.65;
+    width: 14px; height: 14px;
+    top: 78%; left: 85%;
     animation: sparkle-pulse 3.5s ease-in-out 2s infinite;
 }
 .sparkle-star:nth-child(5) {
-    width: 7px; height: 7px;
-    top: 25%; left: 90%;
-    opacity: 0.55;
+    width: 10px; height: 10px;
+    top: 22%; left: 88%;
     animation: sparkle-pulse 3s ease-in-out 1.5s infinite;
 }
 .sparkle-star:nth-child(6) {
-    width: 9px; height: 9px;
-    top: 70%; left: 15%;
-    opacity: 0.6;
+    width: 16px; height: 16px;
+    top: 68%; left: 12%;
     animation: sparkle-pulse 4s ease-in-out 0.8s infinite;
 }
 .sparkle-star:nth-child(7) {
-    width: 5px; height: 5px;
+    width: 8px; height: 8px;
     top: 45%; left: 55%;
-    opacity: 0.5;
     animation: sparkle-pulse 2.8s ease-in-out 2.5s infinite;
 }
 .sparkle-star:nth-child(8) {
-    width: 11px; height: 11px;
-    top: 10%; left: 50%;
-    opacity: 0.7;
+    width: 16px; height: 16px;
+    top: 8%; left: 50%;
     animation: sparkle-pulse 3.2s ease-in-out 0.3s infinite;
 }
 
 @keyframes twinkle-sm {
-    0% { opacity: 0.3; }
-    50% { opacity: 0.7; }
-    100% { opacity: 0.4; }
+    0% { opacity: 0.4; }
+    50% { opacity: 0.9; }
+    100% { opacity: 0.5; }
 }
 
 @keyframes twinkle-md {
+    0% { opacity: 0.3; }
+    50% { opacity: 1; }
+    100% { opacity: 0.4; }
+}
+
+@keyframes twinkle-lg {
     0% { opacity: 0.4; }
     50% { opacity: 1; }
     100% { opacity: 0.5; }
 }
 
-@keyframes twinkle-lg {
-    0% { opacity: 0.5; }
-    50% { opacity: 1; }
-    100% { opacity: 0.6; }
-}
-
 @keyframes sparkle-pulse {
-    0%, 100% { opacity: 0.2; transform: scale(0.6) rotate(0deg); }
-    50% { opacity: 1; transform: scale(1.2) rotate(15deg); }
+    0%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); }
+    50% { opacity: 0.9; transform: scale(1) rotate(20deg); }
 }
 
 .canvas-area > .canvas-table {
-    position: relative;
+    position: absolute;
     z-index: 1;
 }
 
@@ -559,6 +557,11 @@ body {
     background: #16213e;
     border-bottom: 1px solid #0f3460;
     user-select: none;
+    cursor: grab;
+}
+
+.canvas-table-header:active {
+    cursor: grabbing;
 }
 
 .canvas-table-name {

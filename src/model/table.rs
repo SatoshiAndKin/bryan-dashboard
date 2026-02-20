@@ -132,6 +132,23 @@ impl TableModel {
         self.row_heights.get(&row).copied().unwrap_or(28.0)
     }
 
+    pub fn pixel_width(&self) -> f32 {
+        let mut w: f32 = 0.0;
+        for c in 0..self.cols {
+            w += self.col_width(c);
+        }
+        w + 2.0 // border
+    }
+
+    pub fn pixel_height(&self) -> f32 {
+        let header_bar = 30.0;
+        let mut h: f32 = header_bar;
+        for r in 0..self.rows {
+            h += self.row_height(r);
+        }
+        h + 2.0 // border
+    }
+
     pub fn add_row(&mut self) {
         self.rows += 1;
     }

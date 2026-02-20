@@ -65,7 +65,7 @@ impl Sheet {
         let max_y = self
             .tables
             .iter()
-            .map(|t| t.canvas_y + (t.rows as f32 * 28.0) + 60.0)
+            .map(|t| t.canvas_y + t.pixel_height() + 16.0)
             .fold(0.0f32, f32::max);
         table.canvas_y = max_y;
         table.header_rows = 1;
