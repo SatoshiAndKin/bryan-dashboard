@@ -29,6 +29,15 @@ impl RpcEntry {
             })
             .unwrap_or(false)
     }
+
+    pub fn is_http(&self) -> bool {
+        self.primary_url()
+            .map(|u| {
+                let u = u.to_lowercase();
+                u.starts_with("http://") || u.starts_with("https://")
+            })
+            .unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -71,33 +80,10 @@ impl Default for AppSettings {
 
 #[allow(dead_code)]
 impl AppSettings {
-    pub fn is_websocket(&self) -> bool {
-        self.rpc_entries
-            .first()
-            .map(|e| e.is_websocket())
-            .unwrap_or(false)
-    }
-
-    pub fn is_http(&self) -> bool {
-        let url = self.effective_rpc_url().unwrap_or_default().to_lowercase();
-        url.starts_with("http://") || url.starts_with("https://")
-    }
-
-    pub fn has_rpc(&self) -> bool {
-        self.effective_rpc_url().is_some()
-    }
-
-    /// Get the primary RPC URL from the first entry that has one.
-    pub fn effective_rpc_url(&self) -> Option<String> {
-        self.rpc_entries.iter().find_map(|e| e.primary_url())
-    }
-
-    /// Get RPC entry for a specific chain ID
     pub fn rpc_for_chain(&self, chain_id: u64) -> Option<&RpcEntry> {
         self.rpc_entries.iter().find(|e| e.chain_id == chain_id)
     }
 
-    /// Check if chain_id is unique before adding
     pub fn has_chain_id(&self, chain_id: u64) -> bool {
         self.rpc_entries.iter().any(|e| e.chain_id == chain_id)
     }
@@ -117,27 +103,25 @@ mod tests {
     }
 
     #[test]
-    fn test_default_no_rpc_configured() {
-        let s = AppSettings::default();
-        assert!(!s.has_rpc());
+    fn test_rpc_entry_is_websocket() {
+        let entry = RpcEntry {
+            chain_id: 1,
+            chain_name: "Ethereum".to_string(),
+            urls: "wss://mainnet.infura.io/ws/v3/key".to_string(),
+        };
+        assert!(entry.is_websocket());
+        assert!(!entry.is_http());
     }
 
     #[test]
-    fn test_is_websocket() {
-        let mut s = AppSettings::default();
-        s.rpc_entries[0].urls = "wss://mainnet.infura.io/ws/v3/key".into();
-        assert!(s.is_websocket());
-        assert!(!s.is_http());
-        assert!(s.has_rpc());
-    }
-
-    #[test]
-    fn test_is_http() {
-        let mut s = AppSettings::default();
-        s.rpc_entries[0].urls = "https://mainnet.infura.io/v3/key".into();
-        assert!(!s.is_websocket());
-        assert!(s.is_http());
-        assert!(s.has_rpc());
+    fn test_rpc_entry_is_http() {
+        let entry = RpcEntry {
+            chain_id: 1,
+            chain_name: "Ethereum".to_string(),
+            urls: "https://mainnet.infura.io/v3/key".to_string(),
+        };
+        assert!(!entry.is_websocket());
+        assert!(entry.is_http());
     }
 
     #[test]
@@ -191,30 +175,5 @@ mod tests {
         let s = AppSettings::default();
         assert!(s.has_chain_id(1));
         assert!(!s.has_chain_id(137));
-    }
-
-    #[test]
-    fn test_effective_rpc_url_from_entries() {
-        let mut s = AppSettings::default();
-        s.rpc_entries[0].urls = "https://new.example.com".into();
-        assert_eq!(
-            s.effective_rpc_url(),
-            Some("https://new.example.com".to_string())
-        );
-    }
-
-    #[test]
-    fn test_effective_rpc_url_skips_empty_entries() {
-        let mut s = AppSettings::default();
-        // chain 1 has no URL
-        s.rpc_entries.push(RpcEntry {
-            chain_id: 137,
-            chain_name: "Polygon".to_string(),
-            urls: "https://polygon.example.com".to_string(),
-        });
-        assert_eq!(
-            s.effective_rpc_url(),
-            Some("https://polygon.example.com".to_string())
-        );
     }
 }

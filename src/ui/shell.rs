@@ -95,9 +95,8 @@ pub fn WorkbookShell() -> Element {
     let mut pending_delete: Signal<Option<PendingDelete>> = use_signal(|| None);
     let mut settings = use_signal(load_settings);
     let mut show_settings = use_signal(|| {
-        // Prompt settings if no RPC is configured
         let s = load_settings();
-        !s.has_rpc()
+        s.rpc_for_chain(1).and_then(|e| e.primary_url()).is_none()
     });
     let block_head: Signal<Option<BlockHead>> = use_signal(|| None);
     let mut last_saved: Signal<Option<String>> = use_signal(|| None);
@@ -121,7 +120,11 @@ pub fn WorkbookShell() -> Element {
     {
         let bh = block_head.read().clone();
         let cache = balance_cache.read().clone();
-        let rpc_url = settings.read().effective_rpc_url().unwrap_or_default();
+        let rpc_url = settings
+            .read()
+            .rpc_for_chain(1)
+            .and_then(|e| e.primary_url())
+            .unwrap_or_default();
         use_effect(move || {
             let bh_ref = bh.as_ref();
             let pending = std::cell::RefCell::new(Vec::<String>::new());
@@ -132,7 +135,6 @@ pub fn WorkbookShell() -> Element {
                 }
             }
             drop(wb);
-            // Fetch balances for any pending addresses
             let addrs = pending.into_inner();
             #[cfg(target_arch = "wasm32")]
             if !addrs.is_empty() && !rpc_url.is_empty() {
@@ -1364,19 +1366,23 @@ fn push_toast(ui: &mut Signal<UiState>, message: String) {
     ui.write().toasts.push((message, ts));
 }
 
-/// Connect to Ethereum RPC and update block_head signal
 #[cfg(target_arch = "wasm32")]
 async fn connect_eth(settings: AppSettings, mut block_head: Signal<Option<BlockHead>>) {
-    if !settings.has_rpc() {
-        block_head.set(None);
-        return;
-    }
-
-    let url = match settings.effective_rpc_url() {
-        Some(u) => u,
-        None => return,
+    let entry = match settings.rpc_for_chain(1) {
+        Some(e) => e.clone(),
+        None => {
+            block_head.set(None);
+            return;
+        }
     };
-    if settings.is_websocket() {
+    let url = match entry.primary_url() {
+        Some(u) => u,
+        None => {
+            block_head.set(None);
+            return;
+        }
+    };
+    if entry.is_websocket() {
         connect_eth_ws(&url, block_head).await;
     } else {
         poll_eth_http(&url, settings.poll_interval_secs, block_head).await;
