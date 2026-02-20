@@ -7,7 +7,7 @@
 }
 
 body {
-    background-color: #1a1a2e;
+    background-color: #060612;
     color: #e0e0e0;
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 13px;
@@ -302,7 +302,7 @@ body {
     min-width: min-content;
     min-height: min-content;
     overflow: visible;
-    background: #0a0a1a;
+    background: transparent;
     padding: 24px;
     display: flex;
     flex-direction: column;

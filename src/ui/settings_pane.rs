@@ -85,33 +85,15 @@ pub fn SettingsPane(
                                             "x"
                                         }
                                     }
-                                    div { class: "rpc-entry-row",
-                                        input {
-                                            class: "settings-input",
-                                            r#type: "text",
-                                            placeholder: "https://rpc1.example.com, https://rpc2.example.com",
-                                            value: "{urls}",
-                                            oninput: move |e| {
-                                                test_results.write().remove(&i);
-                                                draft_entries.write()[i].urls = e.value();
-                                            },
-                                        }
-                                        button {
-                                            class: "toolbar-btn",
-                                            onclick: move |_| {
-                                                let entries = draft_entries.read().clone();
-                                                if let Some(entry) = entries.get(i) {
-                                                    let entry = entry.clone();
-                                                    let mut results = test_results;
-                                                    results.write().insert(i, RpcTestResult::Testing);
-                                                    spawn(async move {
-                                                        let result = test_rpc_chain_id(&entry).await;
-                                                        results.write().insert(i, result);
-                                                    });
-                                                }
-                                            },
-                                            "Test"
-                                        }
+                                    input {
+                                        class: "settings-input",
+                                        r#type: "text",
+                                        placeholder: "https://rpc1.example.com, https://rpc2.example.com",
+                                        value: "{urls}",
+                                        oninput: move |e| {
+                                            test_results.write().remove(&i);
+                                            draft_entries.write()[i].urls = e.value();
+                                        },
                                     }
                                     {
                                         let result = test_results.read().get(&i).cloned();
@@ -248,16 +230,55 @@ pub fn SettingsPane(
                     button {
                         class: "modal-btn confirm save",
                         onclick: move |_| {
-                            let interval = draft_interval.read().parse::<u32>().unwrap_or(10).max(1);
-                            let max_retries = draft_max_retries.read().parse::<u32>().unwrap_or(3);
-                            let retry_backoff = draft_retry_backoff.read().parse::<u64>().unwrap_or(1000);
-                            let mut new_settings = AppSettings::default();
-                            new_settings.poll_interval_secs = interval;
-                            new_settings.etherscan_api_key = draft_etherscan_key.read().trim().to_string();
-                            new_settings.rpc_entries = draft_entries.read().clone();
-                            new_settings.max_retries = max_retries;
-                            new_settings.retry_backoff_ms = retry_backoff;
-                            on_save.call(new_settings);
+                            let entries = draft_entries.read().clone();
+                            let mut results = test_results;
+                            let entries_to_test: Vec<(usize, RpcEntry)> = entries
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, e)| e.primary_url().is_some())
+                                .map(|(i, e)| (i, e.clone()))
+                                .collect();
+
+                            if entries_to_test.is_empty() {
+                                let interval = draft_interval.read().parse::<u32>().unwrap_or(10).max(1);
+                                let max_retries = draft_max_retries.read().parse::<u32>().unwrap_or(3);
+                                let retry_backoff = draft_retry_backoff.read().parse::<u64>().unwrap_or(1000);
+                                let mut new_settings = AppSettings::default();
+                                new_settings.poll_interval_secs = interval;
+                                new_settings.etherscan_api_key = draft_etherscan_key.read().trim().to_string();
+                                new_settings.rpc_entries = entries;
+                                new_settings.max_retries = max_retries;
+                                new_settings.retry_backoff_ms = retry_backoff;
+                                on_save.call(new_settings);
+                                return;
+                            }
+
+                            for (i, _) in &entries_to_test {
+                                results.write().insert(*i, RpcTestResult::Testing);
+                            }
+
+                            spawn(async move {
+                                let mut all_ok = true;
+                                for (i, entry) in &entries_to_test {
+                                    let result = test_rpc_chain_id(entry).await;
+                                    if !matches!(result, RpcTestResult::Ok(_)) {
+                                        all_ok = false;
+                                    }
+                                    results.write().insert(*i, result);
+                                }
+                                if all_ok {
+                                    let interval = draft_interval.read().parse::<u32>().unwrap_or(10).max(1);
+                                    let max_retries = draft_max_retries.read().parse::<u32>().unwrap_or(3);
+                                    let retry_backoff = draft_retry_backoff.read().parse::<u64>().unwrap_or(1000);
+                                    let mut new_settings = AppSettings::default();
+                                    new_settings.poll_interval_secs = interval;
+                                    new_settings.etherscan_api_key = draft_etherscan_key.read().trim().to_string();
+                                    new_settings.rpc_entries = draft_entries.read().clone();
+                                    new_settings.max_retries = max_retries;
+                                    new_settings.retry_backoff_ms = retry_backoff;
+                                    on_save.call(new_settings);
+                                }
+                            });
                         },
                         "Save"
                     }
