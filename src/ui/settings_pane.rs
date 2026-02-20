@@ -207,9 +207,15 @@ pub fn SettingsPane(
                             }
                         }
                         if bh.timestamp > 0 {
-                            div { class: "block-info-row",
-                                span { class: "block-info-label", "Timestamp:" }
-                                span { class: "block-info-value", "{bh.timestamp}" }
+                            {
+                                let now = (js_sys::Date::now() / 1000.0) as u64;
+                                let ago = now.saturating_sub(bh.timestamp);
+                                rsx! {
+                                    div { class: "block-info-row",
+                                        span { class: "block-info-label", "Age:" }
+                                        span { class: "block-info-value", "{ago}s ago" }
+                                    }
+                                }
                             }
                         }
                         if let Some(fee) = bh.base_fee {
