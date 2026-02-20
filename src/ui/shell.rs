@@ -23,6 +23,8 @@ pub struct UiState {
     /// (table_id, col, row)
     pub selected: Option<(TableId, u32, u32)>,
     pub editing: Option<(TableId, u32, u32)>,
+    /// Which sheet the cell being edited belongs to
+    pub editing_sheet_id: Option<SheetId>,
     pub edit_buffer: String,
     pub clipboard: Option<(TableId, u32, u32)>,
     pub dragging: Option<(TableId, u32, u32)>,
@@ -52,6 +54,11 @@ pub fn WorkbookShell() -> Element {
     let clipboard = ui_state.clipboard;
     let dragging = ui_state.dragging;
     let show_func_sidebar = editing.is_some() && edit_buffer.starts_with('=');
+
+    let active_table_info = active_sheet.as_ref().and_then(|s| {
+        s.active_table()
+            .map(|t| (t.id, t.header_rows, t.header_cols, t.footer_rows))
+    });
 
     let sel_info = selected.map(|(_tid, col, row)| (col, row));
     let sel_table_id = selected.map(|(tid, _, _)| tid);
@@ -130,8 +137,10 @@ pub fn WorkbookShell() -> Element {
                                     && e.key() != Key::Delete
                                 {
                                     drop(u);
+                                    let sid = workbook.read().active_sheet_id;
                                     let mut u = ui.write();
                                     u.editing = Some((tid, col, row));
+                                    u.editing_sheet_id = Some(sid);
                                     u.edit_buffer = ch;
                                 }
                             }
@@ -146,9 +155,12 @@ pub fn WorkbookShell() -> Element {
                 active_id: active_sheet_id,
                 on_select: move |id: SheetId| {
                     workbook.write().active_sheet_id = id;
-                    let mut u = ui.write();
-                    u.selected = None;
-                    u.editing = None;
+                    let u = ui.read();
+                    if u.editing.is_none() {
+                        drop(u);
+                        let mut u = ui.write();
+                        u.selected = None;
+                    }
                 },
                 on_add: move |_: ()| {
                     let mut wb = workbook.write();
@@ -212,6 +224,110 @@ pub fn WorkbookShell() -> Element {
                     },
                     "+ Col"
                 }
+                // Header / footer config for active table
+                if let Some((_atid, h_rows, h_cols, f_rows)) = active_table_info {
+                    span { class: "toolbar-separator" }
+                    div { class: "toolbar-stepper",
+                        span { class: "stepper-label", "H-Rows" }
+                        button {
+                            class: "stepper-btn",
+                            disabled: h_rows == 0,
+                            onclick: move |_| {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(t) = sheet.active_table_mut() {
+                                        t.header_rows = t.header_rows.saturating_sub(1);
+                                    }
+                                }
+                                save_workbook(&wb);
+                            },
+                            "-"
+                        }
+                        span { class: "stepper-value", "{h_rows}" }
+                        button {
+                            class: "stepper-btn",
+                            onclick: move |_| {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(t) = sheet.active_table_mut() {
+                                        if t.header_rows < t.rows.saturating_sub(t.footer_rows) {
+                                            t.header_rows += 1;
+                                        }
+                                    }
+                                }
+                                save_workbook(&wb);
+                            },
+                            "+"
+                        }
+                    }
+                    div { class: "toolbar-stepper",
+                        span { class: "stepper-label", "H-Cols" }
+                        button {
+                            class: "stepper-btn",
+                            disabled: h_cols == 0,
+                            onclick: move |_| {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(t) = sheet.active_table_mut() {
+                                        t.header_cols = t.header_cols.saturating_sub(1);
+                                    }
+                                }
+                                save_workbook(&wb);
+                            },
+                            "-"
+                        }
+                        span { class: "stepper-value", "{h_cols}" }
+                        button {
+                            class: "stepper-btn",
+                            onclick: move |_| {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(t) = sheet.active_table_mut() {
+                                        if t.header_cols < t.cols {
+                                            t.header_cols += 1;
+                                        }
+                                    }
+                                }
+                                save_workbook(&wb);
+                            },
+                            "+"
+                        }
+                    }
+                    div { class: "toolbar-stepper",
+                        span { class: "stepper-label", "Footers" }
+                        button {
+                            class: "stepper-btn",
+                            disabled: f_rows == 0,
+                            onclick: move |_| {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(t) = sheet.active_table_mut() {
+                                        t.footer_rows = t.footer_rows.saturating_sub(1);
+                                    }
+                                }
+                                save_workbook(&wb);
+                            },
+                            "-"
+                        }
+                        span { class: "stepper-value", "{f_rows}" }
+                        button {
+                            class: "stepper-btn",
+                            onclick: move |_| {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(t) = sheet.active_table_mut() {
+                                        if t.footer_rows < t.rows.saturating_sub(t.header_rows) {
+                                            t.footer_rows += 1;
+                                        }
+                                    }
+                                }
+                                save_workbook(&wb);
+                            },
+                            "+"
+                        }
+                    }
+                }
+
                 if let Some((_col, row)) = sel_info {
                     button {
                         class: "toolbar-btn danger",
@@ -290,10 +406,32 @@ pub fn WorkbookShell() -> Element {
                                             on_select_cell: move |(col, row): (u32, u32)| {
                                                 let mut u = ui.write();
                                                 if u.editing.is_some() && u.edit_buffer.starts_with('=') {
-                                                    // If clicking a different table, insert TABLE_NAME::REF
                                                     let editing_tid = u.editing.map(|(t, _, _)| t);
-                                                    if editing_tid != Some(tid) {
-                                                        let wb = workbook.read();
+                                                    let editing_sid = u.editing_sheet_id;
+                                                    let wb = workbook.read();
+                                                    let current_sid = wb.active_sheet_id;
+                                                    let cross_sheet = editing_sid.is_some() && editing_sid != Some(current_sid);
+                                                    let cross_table = editing_tid != Some(tid);
+
+                                                    if cross_sheet {
+                                                        // Insert SHEET::TABLE::CELL
+                                                        let sname = wb.active_sheet()
+                                                            .map(|s| s.name.clone())
+                                                            .unwrap_or_default();
+                                                        let tname = wb.active_sheet()
+                                                            .and_then(|s| s.table_by_id(tid))
+                                                            .map(|t| t.name.clone())
+                                                            .unwrap_or_default();
+                                                        drop(wb);
+                                                        let label = format!(
+                                                            "{}::{}::{}{}",
+                                                            sname, tname,
+                                                            crate::model::cell::col_index_to_label(col),
+                                                            row + 1
+                                                        );
+                                                        u.edit_buffer.push_str(&label);
+                                                    } else if cross_table {
+                                                        // Insert TABLE::CELL
                                                         let tname = wb.active_sheet()
                                                             .and_then(|s| s.table_by_id(tid))
                                                             .map(|t| t.name.clone())
@@ -307,6 +445,7 @@ pub fn WorkbookShell() -> Element {
                                                         );
                                                         u.edit_buffer.push_str(&label);
                                                     } else {
+                                                        drop(wb);
                                                         let label = format!(
                                                             "{}{}",
                                                             crate::model::cell::col_index_to_label(col),
@@ -323,16 +462,19 @@ pub fn WorkbookShell() -> Element {
                                                     }
                                                     u.selected = Some((tid, col, row));
                                                     u.editing = None;
+                                                    u.editing_sheet_id = None;
                                                 }
                                             },
                                             on_start_edit: move |(col, row): (u32, u32)| {
-                                                let source = {
+                                                let (source, sid) = {
                                                     let wb = workbook.read();
-                                                    wb.active_sheet()
+                                                    let sid = wb.active_sheet_id;
+                                                    let src = wb.active_sheet()
                                                         .and_then(|s| s.table_by_id(tid))
                                                         .and_then(|t| t.get_cell(col, row))
                                                         .map(|c| c.source.clone())
-                                                        .unwrap_or_default()
+                                                        .unwrap_or_default();
+                                                    (src, sid)
                                                 };
                                                 {
                                                     let mut wb = workbook.write();
@@ -343,6 +485,7 @@ pub fn WorkbookShell() -> Element {
                                                 let mut u = ui.write();
                                                 u.selected = Some((tid, col, row));
                                                 u.editing = Some((tid, col, row));
+                                                u.editing_sheet_id = Some(sid);
                                                 u.edit_buffer = source;
                                             },
                                             on_edit_change: move |val: String| {
@@ -352,10 +495,12 @@ pub fn WorkbookShell() -> Element {
                                                 let u = ui.read();
                                                 if let Some((etid, col, row)) = u.editing {
                                                     let source = u.edit_buffer.clone();
+                                                    let esid = u.editing_sheet_id;
                                                     drop(u);
                                                     {
                                                         let mut wb = workbook.write();
-                                                        if let Some(sheet) = wb.active_sheet_mut() {
+                                                        let target_sid = esid.unwrap_or(wb.active_sheet_id);
+                                                        if let Some(sheet) = wb.sheets.iter_mut().find(|s| s.id == target_sid) {
                                                             if let Some(table) = sheet.table_by_id_mut(etid) {
                                                                 table.set_cell_source(col, row, source);
                                                                 recalculate_table(table);
@@ -363,12 +508,15 @@ pub fn WorkbookShell() -> Element {
                                                         }
                                                         save_workbook(&wb);
                                                     }
-                                                    ui.write().editing = None;
+                                                    let mut u = ui.write();
+                                                    u.editing = None;
+                                                    u.editing_sheet_id = None;
                                                 }
                                             },
                                             on_cancel_edit: move |_: ()| {
                                                 let mut u = ui.write();
                                                 u.editing = None;
+                                                u.editing_sheet_id = None;
                                                 u.edit_buffer.clear();
                                             },
                                             on_resize_col: move |(col, width): (u32, f32)| {
@@ -451,6 +599,7 @@ pub fn WorkbookShell() -> Element {
                                         let mut u = ui.write();
                                         u.selected = None;
                                         u.editing = None;
+                                        u.editing_sheet_id = None;
                                     }
                                     PendingDelete::Table(tid, _) => {
                                         let tid = *tid;
@@ -463,6 +612,7 @@ pub fn WorkbookShell() -> Element {
                                         if u.selected.map(|(t, _, _)| t) == Some(tid) {
                                             u.selected = None;
                                             u.editing = None;
+                                            u.editing_sheet_id = None;
                                         }
                                     }
                                     PendingDelete::Row(tid, row) => {
@@ -479,6 +629,7 @@ pub fn WorkbookShell() -> Element {
                                         let mut u = ui.write();
                                         u.selected = None;
                                         u.editing = None;
+                                        u.editing_sheet_id = None;
                                     }
                                     PendingDelete::Col(tid, col) => {
                                         let tid = *tid;
@@ -494,6 +645,7 @@ pub fn WorkbookShell() -> Element {
                                         let mut u = ui.write();
                                         u.selected = None;
                                         u.editing = None;
+                                        u.editing_sheet_id = None;
                                     }
                                 }
                                 pending_delete.set(None);

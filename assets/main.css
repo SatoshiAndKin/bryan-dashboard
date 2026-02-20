@@ -128,6 +128,61 @@ body {
     color: #d88;
 }
 
+.toolbar-separator {
+    width: 1px;
+    height: 20px;
+    background: #0f3460;
+    margin: 0 4px;
+}
+
+.toolbar-stepper {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.stepper-label {
+    font-size: 10px;
+    color: #8888a8;
+    margin-right: 4px;
+    user-select: none;
+}
+
+.stepper-btn {
+    background: #0f3460;
+    border: 1px solid #1a4a7a;
+    color: #c0c0d8;
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+
+.stepper-btn:hover:not(:disabled) {
+    background: #1a4a7a;
+    color: #fff;
+}
+
+.stepper-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.stepper-value {
+    font-size: 12px;
+    color: #e0e0e0;
+    min-width: 18px;
+    text-align: center;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
 .toolbar-btn.danger:hover {
     background: #5a2020;
     color: #faa;
