@@ -9,7 +9,7 @@ type AnimCallback = std::rc::Rc<std::cell::RefCell<Option<Closure<dyn FnMut(f64)
 
 #[component]
 pub fn BuddyCharacter(messages: Vec<(String, f64)>) -> Element {
-    let pos = use_signal(|| (60.0_f64, 120.0_f64));
+    let pos = use_signal(|| (9999.0_f64, 9999.0_f64));
     #[allow(unused_variables)]
     let mouse = use_signal(|| (-1000.0_f64, -1000.0_f64));
     #[allow(unused_variables)]
@@ -78,6 +78,18 @@ fn start_buddy_loop(
         let (mx, my) = *mouse.read();
         let (mut vx, mut vy) = *vel.read();
 
+        // Home position: bottom-right corner
+        let home_x = w - 80.0;
+        let home_y = h - 60.0;
+        let hx = home_x - x;
+        let hy = home_y - y;
+        let home_dist = (hx * hx + hy * hy).sqrt();
+        if home_dist > 1.0 {
+            let pull = 0.02;
+            vx += (hx / home_dist) * pull * home_dist.min(200.0) / 200.0;
+            vy += (hy / home_dist) * pull * home_dist.min(200.0) / 200.0;
+        }
+
         // Flee from cursor
         let dx = x - mx;
         let dy = y - my;
@@ -93,13 +105,13 @@ fn start_buddy_loop(
         let mut seed = (x * 1000.0 + y * 7.0) as u64;
         seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
         let r = (seed as f64 / u64::MAX as f64) - 0.5;
-        vx += r * 0.05;
+        vx += r * 0.03;
         seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
         let r2 = (seed as f64 / u64::MAX as f64) - 0.5;
-        vy += r2 * 0.05;
+        vy += r2 * 0.03;
 
-        vx *= 0.98;
-        vy *= 0.98;
+        vx *= 0.96;
+        vy *= 0.96;
 
         let speed = (vx * vx + vy * vy).sqrt();
         let max_speed = 3.0;
