@@ -28,50 +28,53 @@ use crate::model::sheet::Sheet;
 
 fn snap_no_overlap(sheet: &mut Sheet, moved_tid: TableId) {
     let gap = 16.0_f32;
-    for _ in 0..20 {
+    let margin = 16.0_f32;
+    // Enforce minimum margin from canvas edges for all tables
+    for t in &mut sheet.tables {
+        t.canvas_x = t.canvas_x.max(margin);
+        t.canvas_y = t.canvas_y.max(margin);
+    }
+    for _ in 0..50 {
         let mut nudged = false;
         let rects: Vec<_> = sheet
             .tables
             .iter()
-            .map(|t| {
-                (
-                    t.id,
-                    t.canvas_x,
-                    t.canvas_y,
-                    t.pixel_width(),
-                    t.pixel_height(),
-                )
-            })
+            .map(|t| (t.id, t.canvas_x, t.canvas_y, t.pixel_width(), t.pixel_height()))
             .collect();
-        for &(oid, ox, oy, ow, oh) in &rects {
-            if oid == moved_tid {
-                continue;
-            }
-            let idx = sheet.tables.iter().position(|t| t.id == moved_tid).unwrap();
-            let t = &sheet.tables[idx];
-            let (tx, ty, tw, th) = (t.canvas_x, t.canvas_y, t.pixel_width(), t.pixel_height());
-            let overlap_x = (tx < ox + ow + gap) && (tx + tw + gap > ox);
-            let overlap_y = (ty < oy + oh + gap) && (ty + th + gap > oy);
-            if overlap_x && overlap_y {
-                let push_right = ox + ow + gap - tx;
-                let push_left = tx + tw + gap - ox;
-                let push_down = oy + oh + gap - ty;
-                let push_up = ty + th + gap - oy;
-                let min_push = push_right.min(push_left).min(push_down).min(push_up);
-                let t = &mut sheet.tables[idx];
-                if min_push == push_right {
-                    t.canvas_x += push_right;
-                } else if min_push == push_left {
-                    t.canvas_x -= push_left;
-                } else if min_push == push_down {
-                    t.canvas_y += push_down;
-                } else {
-                    t.canvas_y -= push_up;
+        let n = rects.len();
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let (id_a, ax, ay, aw, ah) = rects[i];
+                let (id_b, bx, by, bw, bh) = rects[j];
+                let overlap_x = (ax < bx + bw + gap) && (ax + aw + gap > bx);
+                let overlap_y = (ay < by + bh + gap) && (ay + ah + gap > by);
+                if overlap_x && overlap_y {
+                    let push_id = if id_b == moved_tid { id_b } else if id_a == moved_tid { id_a } else { id_b };
+                    let (fx, fy, fw, fh) = if push_id == id_a { (ax, ay, aw, ah) } else { (bx, by, bw, bh) };
+                    let (ox, oy, ow, oh) = if push_id == id_a { (bx, by, bw, bh) } else { (ax, ay, aw, ah) };
+                    let push_right = ox + ow + gap - fx;
+                    let push_left = fx + fw + gap - ox;
+                    let push_down = oy + oh + gap - fy;
+                    let push_up = fy + fh + gap - oy;
+                    let min_push = push_right.min(push_left).min(push_down).min(push_up);
+                    let idx = sheet.tables.iter().position(|t| t.id == push_id).unwrap();
+                    let t = &mut sheet.tables[idx];
+                    if min_push == push_right {
+                        t.canvas_x += push_right;
+                    } else if min_push == push_left {
+                        t.canvas_x -= push_left;
+                    } else if min_push == push_down {
+                        t.canvas_y += push_down;
+                    } else {
+                        t.canvas_y -= push_up;
+                    }
+                    t.canvas_x = t.canvas_x.max(margin);
+                    t.canvas_y = t.canvas_y.max(margin);
+                    nudged = true;
+                    break;
                 }
-                t.canvas_x = t.canvas_x.max(0.0);
-                t.canvas_y = t.canvas_y.max(0.0);
-                nudged = true;
             }
+            if nudged { break; }
         }
         if !nudged {
             break;
@@ -83,8 +86,8 @@ fn snap_no_overlap(sheet: &mut Sheet, moved_tid: TableId) {
 pub enum PendingDelete {
     Sheet(SheetId, String),
     Table(TableId, String),
-    Rows(TableId, u32, u32), // (tid, min_row, max_row)
-    Cols(TableId, u32, u32), // (tid, min_col, max_col)
+    Rows { tid: TableId, min_row: u32, max_row: u32 },
+    Cols { tid: TableId, min_col: u32, max_col: u32 },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -115,6 +118,8 @@ pub struct UiState {
     pub redo_stack: Vec<UndoEntry>,
     /// Toast messages: (message, timestamp_ms)
     pub toasts: Vec<(String, f64)>,
+    /// Table being renamed: (table_id, current_name)
+    pub renaming_table: Option<(TableId, String)>,
 }
 
 impl UiState {
@@ -127,22 +132,7 @@ impl UiState {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn is_in_selection(&self, tid: TableId, col: u32, row: u32) -> bool {
-        if let Some((stid, min_c, min_r, max_c, max_r)) = self.selection_range() {
-            stid == tid && col >= min_c && col <= max_c && row >= min_r && row <= max_r
-        } else {
-            false
-        }
-    }
 
-    #[allow(dead_code)]
-    pub fn has_multi_selection(&self) -> bool {
-        matches!(
-            (self.selection_anchor, self.selection_end),
-            (Some((t1, c1, r1)), Some((t2, c2, r2))) if t1 == t2 && (c1 != c2 || r1 != r2)
-        )
-    }
 }
 
 #[component]
@@ -169,60 +159,64 @@ pub fn WorkbookShell() -> Element {
     let mut buddy_messages: Signal<Vec<(String, f64)>> = use_signal(Vec::new);
     // Table header drag state: (table_id, start_mouse_x, start_mouse_y, start_canvas_x, start_canvas_y)
     let mut table_drag: Signal<Option<(TableId, f64, f64, f32, f32)>> = use_signal(|| None);
+    // Current drag offset for real-time position updates during drag
+    let mut drag_offset: Signal<Option<(TableId, f32, f32)>> = use_signal(|| None);
     let mut prev_block_nums: Signal<std::collections::HashMap<u64, u64>> =
         use_signal(std::collections::HashMap::new);
 
+    let mut save = move |wb: &crate::model::WorkbookState| {
+        save_workbook(wb);
+        last_saved.set(Some(now_string()));
+    };
+
     // Ethereum connection effect: reacts to settings changes
     #[cfg(target_arch = "wasm32")]
-    {
-        let settings_clone = settings.read().clone();
-        use_effect(move || {
-            let s = settings_clone.clone();
-            let mut bh = block_heads;
-            for entry in &s.rpc_entries {
-                if let Some(url) = entry.primary_url() {
-                    let entry = entry.clone();
-                    let poll = s.poll_interval_secs;
-                    let chain_id = entry.chain_id;
-                    // Eagerly fetch first block via HTTP so formulas resolve immediately
-                    let eager_url = if entry.is_websocket() {
-                        // Try converting wss:// to https:// for initial fetch
-                        let u = url.to_lowercase();
-                        if u.starts_with("wss://") {
-                            Some(format!("https://{}", &url[6..]))
-                        } else if u.starts_with("ws://") {
-                            Some(format!("http://{}", &url[5..]))
-                        } else {
-                            None
-                        }
+    use_effect(move || {
+        let s = settings.read().clone();
+        let mut bh = block_heads;
+        for entry in &s.rpc_entries {
+            if let Some(url) = entry.primary_url() {
+                let entry = entry.clone();
+                let poll = s.poll_interval_secs;
+                let chain_id = entry.chain_id;
+                // Eagerly fetch first block via HTTP so formulas resolve immediately
+                let eager_url = if entry.is_websocket() {
+                    // Try converting wss:// to https:// for initial fetch
+                    let u = url.to_lowercase();
+                    if u.starts_with("wss://") {
+                        Some(format!("https://{}", &url[6..]))
+                    } else if u.starts_with("ws://") {
+                        Some(format!("http://{}", &url[5..]))
                     } else {
-                        Some(url)
-                    };
-                    if let Some(fetch_url) = eager_url {
-                        spawn(async move {
-                            let body = serde_json::json!({
-                                "jsonrpc": "2.0", "id": 1,
-                                "method": "eth_getBlockByNumber",
-                                "params": ["latest", false]
-                            })
-                            .to_string();
-                            if let Ok(val) = fetch_json_rpc(&fetch_url, &body).await {
-                                if let Some(result) = val.get("result") {
-                                    if let Some(mut head) = parse_block_head(result) {
-                                        head.chain_id = chain_id;
-                                        bh.write().insert(chain_id, head);
-                                    }
+                        None
+                    }
+                } else {
+                    Some(url)
+                };
+                if let Some(fetch_url) = eager_url {
+                    spawn(async move {
+                        let body = serde_json::json!({
+                            "jsonrpc": "2.0", "id": 1,
+                            "method": "eth_getBlockByNumber",
+                            "params": ["latest", false]
+                        })
+                        .to_string();
+                        if let Ok(val) = fetch_json_rpc(&fetch_url, &body).await {
+                            if let Some(result) = val.get("result") {
+                                if let Some(mut head) = parse_block_head(result) {
+                                    head.chain_id = chain_id;
+                                    bh.write().insert(chain_id, head);
                                 }
                             }
-                        });
-                    }
-                    spawn(async move {
-                        connect_eth_entry(entry, poll, bh).await;
+                        }
                     });
                 }
+                spawn(async move {
+                    connect_eth_entry(entry, poll, bh).await;
+                });
             }
-        });
-    }
+        }
+    });
 
     // Recalculate all formulas when block_head changes (for BLOCK_NUMBER etc)
     {
@@ -260,34 +254,50 @@ pub fn WorkbookShell() -> Element {
 
     // Detect new blocks and push buddy chat messages
     {
-        use_effect(move || {
+        let block_fingerprint = use_memo(move || {
             let heads = block_heads.read();
-            let mut prev = prev_block_nums.write();
+            let mut pairs: Vec<_> = heads.iter().map(|(c, bh)| (*c, bh.number)).collect();
+            pairs.sort_by_key(|(c, _)| *c);
+            pairs
+        });
+        use_effect(move || {
+            let pairs = block_fingerprint.read();
+            let prev = prev_block_nums.peek();
             let now = js_sys_now();
-            for (chain_id, bh) in heads.iter() {
-                let is_new = prev.get(chain_id).map(|n| *n != bh.number).unwrap_or(true);
+            for &(chain_id, num) in pairs.iter() {
+                let is_new = prev.get(&chain_id).map(|n| *n != num).unwrap_or(true);
                 if is_new {
-                    prev.insert(*chain_id, bh.number);
                     buddy_messages
                         .write()
-                        .push((format!("#{} chain {}", bh.number, chain_id), now));
+                        .push((format!("#{} chain {}", num, chain_id), now));
                 }
+            }
+            drop(prev);
+            let mut prev = prev_block_nums.write();
+            for &(chain_id, num) in pairs.iter() {
+                prev.insert(chain_id, num);
             }
         });
     }
 
     // Auto-dismiss buddy messages after 3 seconds
+    #[cfg(target_arch = "wasm32")]
     {
         use_effect(move || {
-            let msgs = buddy_messages.read().clone();
+            let msgs = buddy_messages.read();
             if msgs.is_empty() {
                 return;
             }
-            let now = js_sys_now();
-            let fresh: Vec<_> = msgs.into_iter().filter(|(_, t)| now - t < 3000.0).collect();
-            if fresh.len() != buddy_messages.read().len() {
-                buddy_messages.set(fresh);
-            }
+            let timeout = gloo_timers::future::TimeoutFuture::new(3_100);
+            spawn(async move {
+                timeout.await;
+                let now = js_sys_now();
+                let msgs = buddy_messages.peek().clone();
+                let fresh: Vec<_> = msgs.into_iter().filter(|(_, t)| now - t < 3000.0).collect();
+                if fresh.len() != buddy_messages.peek().len() {
+                    buddy_messages.set(fresh);
+                }
+            });
         });
     }
 
@@ -425,7 +435,7 @@ pub fn WorkbookShell() -> Element {
                                 }
                                 sheet.recalculate_dependents(src_tid);
                             }
-                            save_workbook(&wb); last_saved.set(Some(now_string()));
+                            save(&wb);
                         }
                     }
                     return;
@@ -446,7 +456,7 @@ pub fn WorkbookShell() -> Element {
                             }
                             sheet.recalculate_dependents(tid);
                         }
-                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                        save(&wb);
                     }
                     return;
                 }
@@ -463,7 +473,7 @@ pub fn WorkbookShell() -> Element {
                             }
                             sheet.recalculate_dependents(entry.table_id);
                         }
-                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                        save(&wb);
                         ui.write().redo_stack.push(entry);
                     }
                     return;
@@ -483,7 +493,7 @@ pub fn WorkbookShell() -> Element {
                             }
                             sheet.recalculate_dependents(entry.table_id);
                         }
-                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                        save(&wb);
                         ui.write().undo_stack.push(entry);
                     }
                     return;
@@ -519,7 +529,7 @@ pub fn WorkbookShell() -> Element {
                                     }
                                     sheet.recalculate_dependents(etid);
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             }
                             let mut u = ui.write();
                             u.editing = None;
@@ -611,7 +621,7 @@ pub fn WorkbookShell() -> Element {
                                             if any_changed { sheet.recalculate_dependents(range_tid); }
                                         }
                                         if any_changed {
-                                            save_workbook(&wb); last_saved.set(Some(now_string()));
+                                            save(&wb);
                                         }
                                     }
                                     return;
@@ -658,14 +668,9 @@ pub fn WorkbookShell() -> Element {
             div { class: "starfield-layer stars-sm" }
             div { class: "starfield-layer stars-md" }
             div { class: "starfield-layer stars-lg" }
-            div { class: "sparkle-star" }
-            div { class: "sparkle-star" }
-            div { class: "sparkle-star" }
-            div { class: "sparkle-star" }
-            div { class: "sparkle-star" }
-            div { class: "sparkle-star" }
-            div { class: "sparkle-star" }
-            div { class: "sparkle-star" }
+            for _ in 0..8 {
+                div { class: "sparkle-star" }
+            }
             BuddyCharacter { messages: buddy_messages.read().clone() }
 
             // Sheet tabs (top bar) + last saved timestamp
@@ -686,7 +691,7 @@ pub fn WorkbookShell() -> Element {
                     let mut wb = workbook.write();
                     let n = wb.sheets.len() + 1;
                     wb.add_sheet(format!("Sheet {}", n));
-                    save_workbook(&wb); last_saved.set(Some(now_string()));
+                    save(&wb);
                 },
                 on_delete: move |id: SheetId| {
                     let wb = workbook.read();
@@ -699,7 +704,7 @@ pub fn WorkbookShell() -> Element {
                 on_rename: move |(id, name): (SheetId, String)| {
                     let mut wb = workbook.write();
                     wb.rename_sheet(id, name);
-                    save_workbook(&wb); last_saved.set(Some(now_string()));
+                    save(&wb);
                 },
             }
             if let Some(ts) = last_saved() {
@@ -743,9 +748,10 @@ pub fn WorkbookShell() -> Element {
                         let mut wb = workbook.write();
                         if let Some(sheet) = wb.active_sheet_mut() {
                             let n = sheet.tables.len() + 1;
-                            sheet.add_table(format!("Table {}", n), 6, 5);
+                            let new_tid = sheet.add_table(format!("Table {}", n), 6, 5);
+                            snap_no_overlap(sheet, new_tid);
                         }
-                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                        save(&wb);
                     },
                     "+ Table"
                 }
@@ -754,11 +760,13 @@ pub fn WorkbookShell() -> Element {
                     onclick: move |_| {
                         let mut wb = workbook.write();
                         if let Some(sheet) = wb.active_sheet_mut() {
+                            let atid = sheet.active_table_id;
                             if let Some(t) = sheet.active_table_mut() {
                                 t.add_row();
                             }
+                            snap_no_overlap(sheet, atid);
                         }
-                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                        save(&wb);
                     },
                     "+ Row"
                 }
@@ -767,11 +775,13 @@ pub fn WorkbookShell() -> Element {
                     onclick: move |_| {
                         let mut wb = workbook.write();
                         if let Some(sheet) = wb.active_sheet_mut() {
+                            let atid = sheet.active_table_id;
                             if let Some(t) = sheet.active_table_mut() {
                                 t.add_col();
                             }
+                            snap_no_overlap(sheet, atid);
                         }
-                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                        save(&wb);
                     },
                     "+ Col"
                 }
@@ -790,7 +800,7 @@ pub fn WorkbookShell() -> Element {
                                         t.header_rows = t.header_rows.saturating_sub(1);
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             },
                             "-"
                         }
@@ -806,7 +816,7 @@ pub fn WorkbookShell() -> Element {
                                         }
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             },
                             "+"
                         }
@@ -823,7 +833,7 @@ pub fn WorkbookShell() -> Element {
                                         t.header_cols = t.header_cols.saturating_sub(1);
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             },
                             "-"
                         }
@@ -839,7 +849,7 @@ pub fn WorkbookShell() -> Element {
                                         }
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             },
                             "+"
                         }
@@ -856,7 +866,7 @@ pub fn WorkbookShell() -> Element {
                                         t.footer_rows = t.footer_rows.saturating_sub(1);
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             },
                             "-"
                         }
@@ -872,7 +882,7 @@ pub fn WorkbookShell() -> Element {
                                         }
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             },
                             "+"
                         }
@@ -894,7 +904,7 @@ pub fn WorkbookShell() -> Element {
                                         table.set_cell_format(col, row, fmt);
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             }
                         },
                         title: "Bold",
@@ -912,7 +922,7 @@ pub fn WorkbookShell() -> Element {
                                         table.set_cell_format(col, row, fmt);
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             }
                         },
                         title: "Italic",
@@ -931,7 +941,7 @@ pub fn WorkbookShell() -> Element {
                                         table.set_cell_format(col, row, fmt);
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             }
                         },
                         title: "Align Left",
@@ -949,7 +959,7 @@ pub fn WorkbookShell() -> Element {
                                         table.set_cell_format(col, row, fmt);
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             }
                         },
                         title: "Align Center",
@@ -967,7 +977,7 @@ pub fn WorkbookShell() -> Element {
                                         table.set_cell_format(col, row, fmt);
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             }
                         },
                         title: "Align Right",
@@ -986,7 +996,7 @@ pub fn WorkbookShell() -> Element {
                                         table.set_cell_format(col, row, fmt);
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             }
                         },
                         title: "Currency",
@@ -1004,7 +1014,7 @@ pub fn WorkbookShell() -> Element {
                                         table.set_cell_format(col, row, fmt);
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             }
                         },
                         title: "Percent",
@@ -1025,7 +1035,7 @@ pub fn WorkbookShell() -> Element {
                                         table.set_cell_format(col, row, fmt);
                                     }
                                 }
-                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                save(&wb);
                             }
                         },
                         title: "Fixed Decimals",
@@ -1040,7 +1050,7 @@ pub fn WorkbookShell() -> Element {
                         onclick: move |_| {
                             let range = ui.read().selection_range();
                             if let Some((tid, _mc, min_r, _xc, max_r)) = range {
-                                pending_delete.set(Some(PendingDelete::Rows(tid, min_r, max_r)));
+                                pending_delete.set(Some(PendingDelete::Rows { tid, min_row: min_r, max_row: max_r }));
                             }
                         },
                         "- Row"
@@ -1052,7 +1062,7 @@ pub fn WorkbookShell() -> Element {
                         onclick: move |_| {
                             let range = ui.read().selection_range();
                             if let Some((tid, min_c, _mr, max_c, _xr)) = range {
-                                pending_delete.set(Some(PendingDelete::Cols(tid, min_c, max_c)));
+                                pending_delete.set(Some(PendingDelete::Cols { tid, min_col: min_c, max_col: max_c }));
                             }
                         },
                         "- Col"
@@ -1109,8 +1119,7 @@ pub fn WorkbookShell() -> Element {
                         if let Some(sheet) = wb.active_sheet_mut() {
                             snap_no_overlap(sheet, drag_tid);
                         }
-                        save_workbook(&wb);
-                        last_saved.set(Some(now_string()));
+                        save(&wb);
                         table_drag.set(None);
                     }
                 },
@@ -1129,8 +1138,12 @@ pub fn WorkbookShell() -> Element {
                                     .and_then(|(t, mc, mr, xc, xr)| if t == tid { Some((mc, mr, xc, xr)) } else { None });
                                 let t_edit_buffer = if t_editing.is_some() { edit_buffer.clone() } else { String::new() };
                                 let can_delete_table = sheet.tables.len() > 1;
-                                let tx = table.canvas_x;
-                                let ty = table.canvas_y;
+                                let rename_name = ui.read().renaming_table.as_ref().map_or(String::new(), |(_, n)| n.clone());
+                                // Apply drag offset if this table is being dragged
+                                let drag_dx = drag_offset.read().and_then(|(tid, dx, dy)| if tid == table.id { Some((dx, dy)) } else { None });
+                                let tx = table.canvas_x + drag_dx.map(|(dx, _)| dx).unwrap_or(0.0);
+                                let ty = table.canvas_y + drag_dx.map(|(_, dy)| dy).unwrap_or(0.0);
+                                let delete_table_name = table_name.clone();
                                 rsx! {
                                     div {
                                         class: if is_active { "canvas-table active" } else { "canvas-table" },
@@ -1145,12 +1158,50 @@ pub fn WorkbookShell() -> Element {
                                                     }
                                                 }
                                             },
-                                            span { class: "canvas-table-name", "{table_name}" }
+                                            // Table name with rename on double-click
+                                            if ui.read().renaming_table.as_ref().map(|(id, _)| *id) == Some(tid) {
+                                                input {
+                                                    class: "table-name-input",
+                                                    value: "{rename_name}",
+                                                    autofocus: true,
+                                                    oninput: move |e: FormEvent| {
+                                                        if let Some(rt) = ui.write().renaming_table.as_mut() {
+                                                            rt.1 = e.value();
+                                                        }
+                                                    },
+                                                    onkeydown: move |e: KeyboardEvent| {
+                                                        if e.key() == Key::Enter {
+                                                            let new_name = ui.read().renaming_table.as_ref().map(|(_, n)| n.clone()).unwrap_or_default();
+                                                            {
+                                                                let mut wb = workbook.write();
+                                                                if let Some(sheet) = wb.active_sheet_mut() {
+                                                                    sheet.rename_table(tid, new_name);
+                                                                }
+                                                            }
+                                                            save(&workbook.read());
+                                                            ui.write().renaming_table = None;
+                                                        } else if e.key() == Key::Escape {
+                                                            ui.write().renaming_table = None;
+                                                        }
+                                                    },
+                                                    onblur: move |_| {
+                                                        ui.write().renaming_table = None;
+                                                    }
+                                                }
+                                            } else {
+                                                span {
+                                                    class: "canvas-table-name",
+                                                    ondoubleclick: move |_| {
+                                                        ui.write().renaming_table = Some((tid, table_name.clone()));
+                                                    },
+                                                    "{table_name}"
+                                                }
+                                            }
                                             if can_delete_table {
                                                 button {
                                                     class: "canvas-table-delete",
                                                     onclick: move |_| {
-                                                        pending_delete.set(Some(PendingDelete::Table(tid, table_name.clone())));
+                                                        pending_delete.set(Some(PendingDelete::Table(tid, delete_table_name.clone())));
                                                     },
                                                     "x"
                                                 }
@@ -1187,7 +1238,7 @@ pub fn WorkbookShell() -> Element {
                                                         let label = format!(
                                                             "{}::{}::{}{}",
                                                             sname, tname,
-                                                            crate::model::cell::col_index_to_label(col),
+                                                            col_index_to_label(col),
                                                             row + 1
                                                         );
                                                         u.edit_buffer.push_str(&label);
@@ -1201,7 +1252,7 @@ pub fn WorkbookShell() -> Element {
                                                         let label = format!(
                                                             "{}::{}{}",
                                                             tname,
-                                                            crate::model::cell::col_index_to_label(col),
+                                                            col_index_to_label(col),
                                                             row + 1
                                                         );
                                                         u.edit_buffer.push_str(&label);
@@ -1209,7 +1260,7 @@ pub fn WorkbookShell() -> Element {
                                                         drop(wb);
                                                         let label = format!(
                                                             "{}{}",
-                                                            crate::model::cell::col_index_to_label(col),
+                                                            col_index_to_label(col),
                                                             row + 1
                                                         );
                                                         u.edit_buffer.push_str(&label);
@@ -1341,7 +1392,7 @@ pub fn WorkbookShell() -> Element {
                                                             }
                                                             sheet.recalculate_dependents(etid);
                                                         }
-                                                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                                                        save(&wb);
                                                     }
                                                     let mut u = ui.write();
                                                     u.editing = None;
@@ -1370,8 +1421,9 @@ pub fn WorkbookShell() -> Element {
                                                     if let Some(table) = sheet.table_by_id_mut(tid) {
                                                         table.col_widths.insert(col, width);
                                                     }
+                                                    snap_no_overlap(sheet, tid);
                                                 }
-                                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                                save(&wb);
                                             },
                                             on_resize_row: move |(row, height): (u32, f32)| {
                                                 let mut wb = workbook.write();
@@ -1379,8 +1431,9 @@ pub fn WorkbookShell() -> Element {
                                                     if let Some(table) = sheet.table_by_id_mut(tid) {
                                                         table.row_heights.insert(row, height);
                                                     }
+                                                    snap_no_overlap(sheet, tid);
                                                 }
-                                                save_workbook(&wb); last_saved.set(Some(now_string()));
+                                                save(&wb);
                                             },
                                             on_drag_start: move |(col, row): (u32, u32)| {
                                                 ui.write().dragging = Some((tid, col, row));
@@ -1397,7 +1450,7 @@ pub fn WorkbookShell() -> Element {
                                                             }
                                                             sheet.recalculate_dependents(tid);
                                                         }
-                                                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                                                        save(&wb);
                                                     }
                                                 }
                                                 let mut u = ui.write();
@@ -1443,24 +1496,37 @@ pub fn WorkbookShell() -> Element {
             // Confirmation modal
             if let Some(pd) = pending_delete() {
                 {
+                    let wb = workbook.read();
+                    let active_sheet_name = wb.active_sheet().map(|s| s.name.as_str()).unwrap_or("Sheet");
                     let msg = match &pd {
                         PendingDelete::Sheet(_, name) => format!("Delete sheet \"{}\"? All tables and data in it will be lost.", name),
-                        PendingDelete::Table(_, name) => format!("Delete table \"{}\"? All data in it will be lost.", name),
-                        PendingDelete::Rows(_, min_r, max_r) => {
-                            if min_r == max_r {
-                                format!("Delete row {}?", min_r + 1)
+                        PendingDelete::Table(tid, name) => {
+                            format!("Delete {}::{}? All data in it will be lost.", active_sheet_name, name)
+                        }
+                        PendingDelete::Rows { tid, min_row, max_row } => {
+                            let table_name = wb.active_sheet()
+                                .and_then(|s| s.table_by_id(*tid))
+                                .map(|t| t.name.as_str())
+                                .unwrap_or("Table");
+                            if min_row == max_row {
+                                format!("Delete {}::{}::row {}?", active_sheet_name, table_name, min_row + 1)
                             } else {
-                                format!("Delete rows {} through {}?", min_r + 1, max_r + 1)
+                                format!("Delete {}::{}::rows {} through {}?", active_sheet_name, table_name, min_row + 1, max_row + 1)
                             }
                         }
-                        PendingDelete::Cols(_, min_c, max_c) => {
-                            if min_c == max_c {
-                                format!("Delete column {}?", col_index_to_label(*min_c))
+                        PendingDelete::Cols { tid, min_col, max_col } => {
+                            let table_name = wb.active_sheet()
+                                .and_then(|s| s.table_by_id(*tid))
+                                .map(|t| t.name.as_str())
+                                .unwrap_or("Table");
+                            if min_col == max_col {
+                                format!("Delete {}::{}::column {}?", active_sheet_name, table_name, col_index_to_label(*min_col))
                             } else {
-                                format!("Delete columns {} through {}?", col_index_to_label(*min_c), col_index_to_label(*max_c))
+                                format!("Delete {}::{}::columns {} through {}?", active_sheet_name, table_name, col_index_to_label(*min_col), col_index_to_label(*max_col))
                             }
                         }
                     };
+                    drop(wb);
                     rsx! {
                         ConfirmModal {
                             message: msg,
@@ -1470,7 +1536,7 @@ pub fn WorkbookShell() -> Element {
                                         let id = *id;
                                         let mut wb = workbook.write();
                                         wb.delete_sheet(id);
-                                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                                        save(&wb);
                                         let mut u = ui.write();
                                         u.selected = None;
                                         u.editing = None;
@@ -1482,7 +1548,7 @@ pub fn WorkbookShell() -> Element {
                                         if let Some(sheet) = wb.active_sheet_mut() {
                                             sheet.delete_table(tid);
                                         }
-                                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                                        save(&wb);
                                         let mut u = ui.write();
                                         if u.selected.map(|(t, _, _)| t) == Some(tid) {
                                             u.selected = None;
@@ -1490,20 +1556,20 @@ pub fn WorkbookShell() -> Element {
                                             u.editing_sheet_id = None;
                                         }
                                     }
-                                    PendingDelete::Rows(tid, min_r, max_r) => {
+                                    PendingDelete::Rows { tid, min_row, max_row } => {
                                         let tid = *tid;
                                         let mut wb = workbook.write();
                                         if let Some(sheet) = wb.active_sheet_mut() {
                                             if let Some(table) = sheet.table_by_id_mut(tid) {
                                                 // Delete from bottom to top so indices stay valid
-                                                for r in (*min_r..=*max_r).rev() {
+                                                for r in (*min_row..=*max_row).rev() {
                                                     table.delete_row(r);
                                                 }
                                                 recalculate_table(table);
                                             }
                                             sheet.recalculate_dependents(tid);
                                         }
-                                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                                        save(&wb);
                                         let mut u = ui.write();
                                         u.selected = None;
                                         u.selection_anchor = None;
@@ -1511,20 +1577,20 @@ pub fn WorkbookShell() -> Element {
                                         u.editing = None;
                                         u.editing_sheet_id = None;
                                     }
-                                    PendingDelete::Cols(tid, min_c, max_c) => {
+                                    PendingDelete::Cols { tid, min_col, max_col } => {
                                         let tid = *tid;
                                         let mut wb = workbook.write();
                                         if let Some(sheet) = wb.active_sheet_mut() {
                                             if let Some(table) = sheet.table_by_id_mut(tid) {
                                                 // Delete from right to left so indices stay valid
-                                                for c in (*min_c..=*max_c).rev() {
+                                                for c in (*min_col..=*max_col).rev() {
                                                     table.delete_col(c);
                                                 }
                                                 recalculate_table(table);
                                             }
                                             sheet.recalculate_dependents(tid);
                                         }
-                                        save_workbook(&wb); last_saved.set(Some(now_string()));
+                                        save(&wb);
                                         let mut u = ui.write();
                                         u.selected = None;
                                         u.selection_anchor = None;
@@ -1829,58 +1895,6 @@ async fn fetch_json_rpc(url: &str, body: &str) -> Result<serde_json::Value, Stri
         .ok_or("stringify failed")?;
 
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
-}
-
-/// Fetch JSON-RPC with retry logic (exponential backoff).
-#[cfg(target_arch = "wasm32")]
-async fn fetch_json_rpc_with_retry(
-    url: &str,
-    body: &str,
-    max_retries: u32,
-    backoff_ms: u64,
-) -> Result<serde_json::Value, String> {
-    let mut last_err = String::new();
-    for attempt in 0..=max_retries {
-        match fetch_json_rpc(url, body).await {
-            Ok(val) => return Ok(val),
-            Err(e) => {
-                last_err = e;
-                if attempt < max_retries {
-                    let delay = backoff_ms * (1u64 << attempt.min(5));
-                    gloo_timers::future::sleep(std::time::Duration::from_millis(delay)).await;
-                }
-            }
-        }
-    }
-    Err(format!(
-        "all {} retries failed: {}",
-        max_retries + 1,
-        last_err
-    ))
-}
-
-/// Fetch JSON-RPC with fallback across multiple URLs. Tries each URL in order,
-/// with retry logic per URL.
-#[cfg(target_arch = "wasm32")]
-async fn fetch_json_rpc_with_fallback(
-    urls: &[String],
-    body: &str,
-    max_retries: u32,
-    backoff_ms: u64,
-) -> Result<serde_json::Value, String> {
-    if urls.is_empty() {
-        return Err("no URLs provided".to_string());
-    }
-    let mut last_err = String::new();
-    for url in urls {
-        match fetch_json_rpc_with_retry(url, body, max_retries, backoff_ms).await {
-            Ok(val) => return Ok(val),
-            Err(e) => {
-                last_err = format!("{}: {}", url, e);
-            }
-        }
-    }
-    Err(format!("all providers failed: {}", last_err))
 }
 
 #[cfg(target_arch = "wasm32")]

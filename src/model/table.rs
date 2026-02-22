@@ -318,7 +318,6 @@ impl TableModel {
     }
 
     /// Get the pretty name for a column if headers provide one, else None.
-    #[allow(dead_code)]
     pub fn col_pretty_name(&self, col: u32) -> Option<String> {
         let name = self.col_display_name(col);
         if name != col_index_to_label(col) {
@@ -329,7 +328,6 @@ impl TableModel {
     }
 
     /// Get the pretty name for a row if headers provide one, else None.
-    #[allow(dead_code)]
     pub fn row_pretty_name(&self, row: u32) -> Option<String> {
         let name = self.row_display_name(row);
         if name != (row + 1).to_string() {

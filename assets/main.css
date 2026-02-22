@@ -424,7 +424,7 @@ body {
 .sparkle-star {
     position: fixed;
     pointer-events: none;
-    z-index: 0;
+    z-index: 1;
     background: white;
     clip-path: polygon(
         50% 0%, 58% 38%, 100% 50%, 58% 62%,

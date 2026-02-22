@@ -19,7 +19,9 @@ pub struct Sheet {
 
 impl Sheet {
     pub fn new(id: SheetId, name: String) -> Self {
-        let table = TableModel::new(1, "Table 1".to_string(), 6, 5);
+        let mut table = TableModel::new(1, "Table 1".to_string(), 6, 5);
+        table.canvas_x = 16.0;
+        table.canvas_y = 16.0;
         Self {
             id,
             name,
@@ -47,7 +49,6 @@ impl Sheet {
         self.tables.iter_mut().find(|t| t.id == id)
     }
 
-    #[allow(dead_code)]
     pub fn table_by_name(&self, name: &str) -> Option<&TableModel> {
         self.tables.iter().find(|t| t.name == name)
     }
@@ -66,7 +67,8 @@ impl Sheet {
             .tables
             .iter()
             .map(|t| t.canvas_y + t.pixel_height() + 16.0)
-            .fold(0.0f32, f32::max);
+            .fold(16.0f32, f32::max);
+        table.canvas_x = 16.0;
         table.canvas_y = max_y;
         table.header_rows = 1;
         table.header_cols = 1;
@@ -85,7 +87,6 @@ impl Sheet {
         }
     }
 
-    #[allow(dead_code)]
     pub fn rename_table(&mut self, id: TableId, name: String) {
         let existing: Vec<&str> = self
             .tables

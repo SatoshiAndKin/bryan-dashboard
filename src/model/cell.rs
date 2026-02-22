@@ -158,37 +158,21 @@ impl CellFormat {
     }
 
     pub fn css_style(&self) -> String {
-        let mut parts = Vec::new();
+        let mut style = String::new();
         match self.align {
-            TextAlign::Left => parts.push("text-align:left"),
-            TextAlign::Center => parts.push("text-align:center"),
-            TextAlign::Right => parts.push("text-align:right"),
+            TextAlign::Left => style.push_str("text-align:left;"),
+            TextAlign::Center => style.push_str("text-align:center;"),
+            TextAlign::Right => style.push_str("text-align:right;"),
             TextAlign::Auto => {}
         }
         if self.bold {
-            parts.push("font-weight:700");
+            style.push_str("font-weight:700;");
         }
         if self.italic {
-            parts.push("font-style:italic");
+            style.push_str("font-style:italic;");
         }
         if let Some(ref bg) = self.bg_color {
-            parts.push("will-replace-bg");
-            let _ = bg; // handled below
-        }
-        if let Some(ref fg) = self.fg_color {
-            let _ = fg; // handled below
-        }
-        // Build the actual style string with dynamic values
-        let mut style = String::new();
-        for p in &parts {
-            if *p == "will-replace-bg" {
-                if let Some(ref bg) = self.bg_color {
-                    style.push_str(&format!("background-color:{};", bg));
-                }
-            } else {
-                style.push_str(p);
-                style.push(';');
-            }
+            style.push_str(&format!("background-color:{};", bg));
         }
         if let Some(ref fg) = self.fg_color {
             style.push_str(&format!("color:{};", fg));

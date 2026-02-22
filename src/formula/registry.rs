@@ -26,6 +26,11 @@ pub const BUILTIN_FUNCTIONS: &[FuncInfo] = &[
         description: "Returns the latest Ethereum block number. Optional chain_id to verify chain.",
     },
     FuncInfo {
+        name: "BLOCK",
+        syntax: "BLOCK([chain_id])",
+        description: "Alias for BLOCK_NUMBER.",
+    },
+    FuncInfo {
         name: "BLOCK_HASH",
         syntax: "BLOCK_HASH([chain_id])",
         description: "Returns the latest Ethereum block hash. Optional chain_id to verify chain.",
@@ -37,9 +42,19 @@ pub const BUILTIN_FUNCTIONS: &[FuncInfo] = &[
             "Returns the latest block timestamp (unix). Optional chain_id to verify chain.",
     },
     FuncInfo {
+        name: "BLOCK_BASE_FEE",
+        syntax: "BLOCK_BASE_FEE([chain_id])",
+        description: "Returns the latest block base fee in wei. Optional chain_id to verify chain.",
+    },
+    FuncInfo {
         name: "BASE_FEE",
         syntax: "BASE_FEE([chain_id])",
-        description: "Returns the latest block base fee in wei. Optional chain_id to verify chain.",
+        description: "Alias for BLOCK_BASE_FEE.",
+    },
+    FuncInfo {
+        name: "ETH_CALL",
+        syntax: "ETH_CALL(to, data, [chain_id])",
+        description: "Execute an eth_call against the connected RPC.",
     },
     FuncInfo {
         name: "BLOCK_AGE",

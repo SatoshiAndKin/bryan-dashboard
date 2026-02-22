@@ -76,12 +76,10 @@ pub fn save_settings(settings: &AppSettings) {
     }
 }
 
-#[allow(dead_code)]
 pub fn export_workbook(wb: &WorkbookState) -> Option<String> {
     serde_json::to_string_pretty(wb).ok()
 }
 
-#[allow(dead_code)]
 pub fn import_workbook(json: &str) -> Result<WorkbookState, String> {
     serde_json::from_str::<WorkbookState>(json).map_err(|e| format!("Import failed: {e}"))
 }

@@ -78,7 +78,6 @@ impl Default for AppSettings {
     }
 }
 
-#[allow(dead_code)]
 impl AppSettings {
     pub fn rpc_for_chain(&self, chain_id: u64) -> Option<&RpcEntry> {
         self.rpc_entries.iter().find(|e| e.chain_id == chain_id)

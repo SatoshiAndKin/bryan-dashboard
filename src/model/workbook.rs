@@ -51,7 +51,6 @@ impl Default for WorkbookState {
 }
 
 impl WorkbookState {
-    #[allow(dead_code)]
     /// Migrate v1 (flat tables) to v2 (sheets containing tables)
     pub fn migrate_if_needed(&mut self) {
         if self.version < 2 && !self.tables.is_empty() {
@@ -92,11 +91,6 @@ impl WorkbookState {
         self.sheets.iter().find(|s| s.id == id)
     }
 
-    #[allow(dead_code)]
-    pub fn sheet_by_id_mut(&mut self, id: SheetId) -> Option<&mut Sheet> {
-        self.sheets.iter_mut().find(|s| s.id == id)
-    }
-
     fn unique_sheet_name(&self, base: &str) -> String {
         let existing: Vec<&str> = self.sheets.iter().map(|s| s.name.as_str()).collect();
         unique_name(base, &existing)
@@ -134,7 +128,6 @@ impl WorkbookState {
         }
     }
 
-    #[allow(dead_code)]
     /// Find a table by name across all sheets in the active sheet first, then others
     pub fn find_table_by_name(&self, name: &str) -> Option<&TableModel> {
         // Search active sheet first

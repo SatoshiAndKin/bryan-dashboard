@@ -251,10 +251,8 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
         "BLOCK_NUMBER" | "BLOCK" => {
             let requested_chain = get_optional_chain_id(args, ctx);
             if let Some(bh) = ctx.block_head {
-                if let Some(chain_id) = requested_chain {
-                    if bh.chain_id != 0 && bh.chain_id != chain_id {
-                        return CellValue::Error(format!("#CHAIN! connected to {}", bh.chain_id));
-                    }
+                if let Err(e) = validate_chain(requested_chain, bh) {
+                    return e;
                 }
                 CellValue::Number(bh.number as f64)
             } else {
@@ -264,10 +262,8 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
         "BLOCK_HASH" => {
             let requested_chain = get_optional_chain_id(args, ctx);
             if let Some(bh) = ctx.block_head {
-                if let Some(chain_id) = requested_chain {
-                    if bh.chain_id != 0 && bh.chain_id != chain_id {
-                        return CellValue::Error(format!("#CHAIN! connected to {}", bh.chain_id));
-                    }
+                if let Err(e) = validate_chain(requested_chain, bh) {
+                    return e;
                 }
                 CellValue::Text(bh.hash.clone())
             } else {
@@ -277,10 +273,8 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
         "BLOCK_TIMESTAMP" => {
             let requested_chain = get_optional_chain_id(args, ctx);
             if let Some(bh) = ctx.block_head {
-                if let Some(chain_id) = requested_chain {
-                    if bh.chain_id != 0 && bh.chain_id != chain_id {
-                        return CellValue::Error(format!("#CHAIN! connected to {}", bh.chain_id));
-                    }
+                if let Err(e) = validate_chain(requested_chain, bh) {
+                    return e;
                 }
                 CellValue::Number(bh.timestamp as f64)
             } else {
@@ -290,10 +284,8 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
         "BLOCK_BASE_FEE" | "BASE_FEE" => {
             let requested_chain = get_optional_chain_id(args, ctx);
             if let Some(bh) = ctx.block_head {
-                if let Some(chain_id) = requested_chain {
-                    if bh.chain_id != 0 && bh.chain_id != chain_id {
-                        return CellValue::Error(format!("#CHAIN! connected to {}", bh.chain_id));
-                    }
+                if let Err(e) = validate_chain(requested_chain, bh) {
+                    return e;
                 }
                 match bh.base_fee {
                     Some(fee) => CellValue::Number(fee as f64),
@@ -306,10 +298,8 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
         "BLOCK_AGE" => {
             let requested_chain = get_optional_chain_id(args, ctx);
             if let Some(bh) = ctx.block_head {
-                if let Some(chain_id) = requested_chain {
-                    if bh.chain_id != 0 && bh.chain_id != chain_id {
-                        return CellValue::Error(format!("#CHAIN! connected to {}", bh.chain_id));
-                    }
+                if let Err(e) = validate_chain(requested_chain, bh) {
+                    return e;
                 }
                 let age = ctx.now_secs - bh.timestamp as f64;
                 if age < 0.0 {
@@ -418,6 +408,16 @@ fn get_optional_chain_id(args: &[Expr], ctx: &EvalContext) -> Option<u64> {
         CellValue::Number(n) if n > 0.0 => Some(n as u64),
         _ => None,
     }
+}
+
+/// Validate that the block head's chain matches the requested chain (if any).
+fn validate_chain(requested: Option<u64>, bh: &BlockHead) -> Result<(), CellValue> {
+    if let Some(chain) = requested {
+        if bh.chain_id != chain {
+            return Err(CellValue::Error(format!("#CHAIN! expected {chain}, got {}", bh.chain_id)));
+        }
+    }
+    Ok(())
 }
 
 fn collect_range(start: &CellRef, end: &CellRef, table: &TableModel) -> Vec<CellValue> {

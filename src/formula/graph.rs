@@ -44,7 +44,6 @@ pub fn recalculate_table(table: &mut TableModel) {
     recalculate_table_full(table, &[], None);
 }
 
-#[allow(dead_code)]
 pub fn recalculate_table_with_siblings(table: &mut TableModel, siblings: &[TableModel]) {
     recalculate_table_full(table, siblings, None);
 }
