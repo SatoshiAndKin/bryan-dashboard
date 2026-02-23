@@ -2,6 +2,7 @@
 pub enum Token {
     Number(f64),
     Ident(String),
+    StringLit(String),
     Plus,
     Minus,
     Star,
@@ -12,6 +13,15 @@ pub enum Token {
     Colon,
     DoubleColon,
     Dollar,
+    /// Comparison operators for IF conditions
+    Gt,
+    Lt,
+    Gte,
+    Lte,
+    Eq,
+    Neq,
+    /// Ampersand for string concatenation: "hello" & " " & "world"
+    Ampersand,
     Eof,
 }
 
@@ -99,6 +109,38 @@ impl Lexer {
                         self.advance();
                         tokens.push(Token::Dollar);
                     }
+                    '"' => {
+                        tokens.push(self.read_string()?);
+                    }
+                    '>' => {
+                        self.advance();
+                        if self.peek() == Some('=') {
+                            self.advance();
+                            tokens.push(Token::Gte);
+                        } else {
+                            tokens.push(Token::Gt);
+                        }
+                    }
+                    '<' => {
+                        self.advance();
+                        if self.peek() == Some('=') {
+                            self.advance();
+                            tokens.push(Token::Lte);
+                        } else if self.peek() == Some('>') {
+                            self.advance();
+                            tokens.push(Token::Neq);
+                        } else {
+                            tokens.push(Token::Lt);
+                        }
+                    }
+                    '=' => {
+                        self.advance();
+                        tokens.push(Token::Eq);
+                    }
+                    '&' => {
+                        self.advance();
+                        tokens.push(Token::Ampersand);
+                    }
                     _ if c.is_ascii_digit() || c == '.' => {
                         tokens.push(self.read_number()?);
                     }
@@ -107,6 +149,18 @@ impl Lexer {
                     }
                     _ => return Err(format!("Unexpected character: {}", c)),
                 },
+            }
+        }
+    }
+
+    fn read_string(&mut self) -> Result<Token, String> {
+        self.advance(); // consume opening "
+        let mut s = String::new();
+        loop {
+            match self.advance() {
+                Some('"') => return Ok(Token::StringLit(s)),
+                Some(c) => s.push(c),
+                None => return Err("Unterminated string literal".to_string()),
             }
         }
     }
@@ -318,6 +372,69 @@ mod tests {
     #[test]
     fn test_unexpected_char_error() {
         let mut lexer = Lexer::new("@");
+        assert!(lexer.tokenize().is_err());
+    }
+
+    #[test]
+    fn test_string_literal() {
+        let tokens = tokenize(r#""hello world""#);
+        assert_eq!(
+            tokens,
+            vec![Token::StringLit("hello world".to_string()), Token::Eof]
+        );
+    }
+
+    #[test]
+    fn test_comparison_operators() {
+        let tokens = tokenize("5>3");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(5.0),
+                Token::Gt,
+                Token::Number(3.0),
+                Token::Eof
+            ]
+        );
+        let tokens = tokenize("5>=3");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(5.0),
+                Token::Gte,
+                Token::Number(3.0),
+                Token::Eof
+            ]
+        );
+        let tokens = tokenize("5<>3");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(5.0),
+                Token::Neq,
+                Token::Number(3.0),
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_ampersand() {
+        let tokens = tokenize(r#""a" & "b""#);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::StringLit("a".to_string()),
+                Token::Ampersand,
+                Token::StringLit("b".to_string()),
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_unterminated_string() {
+        let mut lexer = Lexer::new(r#""unterminated"#);
         assert!(lexer.tokenize().is_err());
     }
 }

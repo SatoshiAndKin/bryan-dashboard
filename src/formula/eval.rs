@@ -112,6 +112,7 @@ pub fn evaluate(expr: &Expr, ctx: &EvalContext) -> CellValue {
 pub fn evaluate_at(expr: &Expr, ctx: &EvalContext, current_cell: Option<(u32, u32)>) -> CellValue {
     match expr {
         Expr::Number(n) => CellValue::Number(*n),
+        Expr::StringLit(s) => CellValue::Text(s.clone()),
         Expr::CellRef(r) => resolve_cell(r, ctx.current),
         Expr::CrossTableRef(sheet, table_name, r) => {
             if let Some(table) = ctx.resolve_cross_ref(sheet, table_name) {
@@ -187,7 +188,43 @@ fn to_number(v: &CellValue) -> Result<f64, CellValue> {
     }
 }
 
+fn to_string_val(v: &CellValue) -> String {
+    match v {
+        CellValue::Number(n) => {
+            if *n == n.floor() && n.abs() < 1e15 {
+                format!("{}", *n as i64)
+            } else {
+                format!("{}", n)
+            }
+        }
+        CellValue::Text(s) => s.clone(),
+        CellValue::Empty => String::new(),
+        CellValue::Error(e) => e.clone(),
+    }
+}
+
 fn eval_binop(left: &CellValue, op: BinOp, right: &CellValue) -> CellValue {
+    // String concatenation
+    if op == BinOp::Concat {
+        if let CellValue::Error(e) = left {
+            return CellValue::Error(e.clone());
+        }
+        if let CellValue::Error(e) = right {
+            return CellValue::Error(e.clone());
+        }
+        let l = to_string_val(left);
+        let r = to_string_val(right);
+        return CellValue::Text(format!("{}{}", l, r));
+    }
+
+    // Comparison operators
+    match op {
+        BinOp::Gt | BinOp::Lt | BinOp::Gte | BinOp::Lte | BinOp::Eq | BinOp::Neq => {
+            return eval_comparison(left, op, right);
+        }
+        _ => {}
+    }
+
     let l = match to_number(left) {
         Ok(n) => n,
         Err(e) => return e,
@@ -207,7 +244,37 @@ fn eval_binop(left: &CellValue, op: BinOp, right: &CellValue) -> CellValue {
                 CellValue::Number(l / r)
             }
         }
+        _ => unreachable!(),
     }
+}
+
+fn eval_comparison(left: &CellValue, op: BinOp, right: &CellValue) -> CellValue {
+    // Compare numbers if both are numeric
+    if let (Ok(l), Ok(r)) = (to_number(left), to_number(right)) {
+        let result = match op {
+            BinOp::Gt => l > r,
+            BinOp::Lt => l < r,
+            BinOp::Gte => l >= r,
+            BinOp::Lte => l <= r,
+            BinOp::Eq => (l - r).abs() < f64::EPSILON,
+            BinOp::Neq => (l - r).abs() >= f64::EPSILON,
+            _ => unreachable!(),
+        };
+        return CellValue::Number(if result { 1.0 } else { 0.0 });
+    }
+    // Fall back to string comparison
+    let l = to_string_val(left);
+    let r = to_string_val(right);
+    let result = match op {
+        BinOp::Gt => l > r,
+        BinOp::Lt => l < r,
+        BinOp::Gte => l >= r,
+        BinOp::Lte => l <= r,
+        BinOp::Eq => l == r,
+        BinOp::Neq => l != r,
+        _ => unreachable!(),
+    };
+    CellValue::Number(if result { 1.0 } else { 0.0 })
 }
 
 fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
@@ -393,6 +460,335 @@ fn eval_func(name: &str, args: &[Expr], ctx: &EvalContext) -> CellValue {
                 }
             }
             CellValue::Text("#LOADING...".to_string())
+        }
+        "IF" => {
+            if args.len() < 2 || args.len() > 3 {
+                return CellValue::Error("#ARGS! IF(condition, then, [else])".to_string());
+            }
+            let cond = evaluate(&args[0], ctx);
+            let is_true = match &cond {
+                CellValue::Number(n) => *n != 0.0,
+                CellValue::Text(s) => !s.is_empty(),
+                CellValue::Empty => false,
+                CellValue::Error(e) => return CellValue::Error(e.clone()),
+            };
+            if is_true {
+                evaluate(&args[1], ctx)
+            } else if args.len() == 3 {
+                evaluate(&args[2], ctx)
+            } else {
+                CellValue::Number(0.0)
+            }
+        }
+        "MIN" => {
+            let values = collect_values(args, ctx);
+            let mut result: Option<f64> = None;
+            for v in &values {
+                match v {
+                    CellValue::Empty => {}
+                    _ => match to_number(v) {
+                        Ok(n) => {
+                            result = Some(match result {
+                                Some(cur) => cur.min(n),
+                                None => n,
+                            });
+                        }
+                        Err(e) => return e,
+                    },
+                }
+            }
+            result.map_or(CellValue::Number(0.0), CellValue::Number)
+        }
+        "MAX" => {
+            let values = collect_values(args, ctx);
+            let mut result: Option<f64> = None;
+            for v in &values {
+                match v {
+                    CellValue::Empty => {}
+                    _ => match to_number(v) {
+                        Ok(n) => {
+                            result = Some(match result {
+                                Some(cur) => cur.max(n),
+                                None => n,
+                            });
+                        }
+                        Err(e) => return e,
+                    },
+                }
+            }
+            result.map_or(CellValue::Number(0.0), CellValue::Number)
+        }
+        "COUNT" => {
+            let values = collect_values(args, ctx);
+            let count = values
+                .iter()
+                .filter(|v| matches!(v, CellValue::Number(_)))
+                .count();
+            CellValue::Number(count as f64)
+        }
+        "COUNTA" => {
+            let values = collect_values(args, ctx);
+            let count = values
+                .iter()
+                .filter(|v| !matches!(v, CellValue::Empty))
+                .count();
+            CellValue::Number(count as f64)
+        }
+        "ROUND" => {
+            if args.is_empty() || args.len() > 2 {
+                return CellValue::Error("#ARGS! ROUND(number, [decimals])".to_string());
+            }
+            let val = evaluate(&args[0], ctx);
+            let n = match to_number(&val) {
+                Ok(n) => n,
+                Err(e) => return e,
+            };
+            let decimals = if args.len() == 2 {
+                let d = evaluate(&args[1], ctx);
+                match to_number(&d) {
+                    Ok(d) => d as i32,
+                    Err(e) => return e,
+                }
+            } else {
+                0
+            };
+            let factor = 10f64.powi(decimals);
+            CellValue::Number((n * factor).round() / factor)
+        }
+        "ABS" => {
+            if args.len() != 1 {
+                return CellValue::Error("#ARGS! ABS(number)".to_string());
+            }
+            let val = evaluate(&args[0], ctx);
+            match to_number(&val) {
+                Ok(n) => CellValue::Number(n.abs()),
+                Err(e) => e,
+            }
+        }
+        "FLOOR" => {
+            if args.is_empty() || args.len() > 2 {
+                return CellValue::Error("#ARGS! FLOOR(number, [significance])".to_string());
+            }
+            let val = evaluate(&args[0], ctx);
+            let n = match to_number(&val) {
+                Ok(n) => n,
+                Err(e) => return e,
+            };
+            if args.len() == 2 {
+                let sig = match to_number(&evaluate(&args[1], ctx)) {
+                    Ok(s) if s != 0.0 => s,
+                    Ok(_) => return CellValue::Error("#DIV/0!".to_string()),
+                    Err(e) => return e,
+                };
+                CellValue::Number((n / sig).floor() * sig)
+            } else {
+                CellValue::Number(n.floor())
+            }
+        }
+        "CEIL" | "CEILING" => {
+            if args.is_empty() || args.len() > 2 {
+                return CellValue::Error("#ARGS! CEIL(number, [significance])".to_string());
+            }
+            let val = evaluate(&args[0], ctx);
+            let n = match to_number(&val) {
+                Ok(n) => n,
+                Err(e) => return e,
+            };
+            if args.len() == 2 {
+                let sig = match to_number(&evaluate(&args[1], ctx)) {
+                    Ok(s) if s != 0.0 => s,
+                    Ok(_) => return CellValue::Error("#DIV/0!".to_string()),
+                    Err(e) => return e,
+                };
+                CellValue::Number((n / sig).ceil() * sig)
+            } else {
+                CellValue::Number(n.ceil())
+            }
+        }
+        "MOD" => {
+            if args.len() != 2 {
+                return CellValue::Error("#ARGS! MOD(number, divisor)".to_string());
+            }
+            let n = match to_number(&evaluate(&args[0], ctx)) {
+                Ok(n) => n,
+                Err(e) => return e,
+            };
+            let d = match to_number(&evaluate(&args[1], ctx)) {
+                Ok(d) => d,
+                Err(e) => return e,
+            };
+            if d == 0.0 {
+                CellValue::Error("#DIV/0!".to_string())
+            } else {
+                CellValue::Number(n % d)
+            }
+        }
+        "POWER" | "POW" => {
+            if args.len() != 2 {
+                return CellValue::Error("#ARGS! POWER(base, exponent)".to_string());
+            }
+            let base = match to_number(&evaluate(&args[0], ctx)) {
+                Ok(n) => n,
+                Err(e) => return e,
+            };
+            let exp = match to_number(&evaluate(&args[1], ctx)) {
+                Ok(n) => n,
+                Err(e) => return e,
+            };
+            CellValue::Number(base.powf(exp))
+        }
+        "SQRT" => {
+            if args.len() != 1 {
+                return CellValue::Error("#ARGS! SQRT(number)".to_string());
+            }
+            let n = match to_number(&evaluate(&args[0], ctx)) {
+                Ok(n) => n,
+                Err(e) => return e,
+            };
+            if n < 0.0 {
+                CellValue::Error("#VALUE! negative sqrt".to_string())
+            } else {
+                CellValue::Number(n.sqrt())
+            }
+        }
+        "LN" => {
+            if args.len() != 1 {
+                return CellValue::Error("#ARGS! LN(number)".to_string());
+            }
+            let n = match to_number(&evaluate(&args[0], ctx)) {
+                Ok(n) => n,
+                Err(e) => return e,
+            };
+            if n <= 0.0 {
+                CellValue::Error("#VALUE! ln of non-positive".to_string())
+            } else {
+                CellValue::Number(n.ln())
+            }
+        }
+        "LOG" | "LOG10" => {
+            if args.len() != 1 {
+                return CellValue::Error("#ARGS! LOG(number)".to_string());
+            }
+            let n = match to_number(&evaluate(&args[0], ctx)) {
+                Ok(n) => n,
+                Err(e) => return e,
+            };
+            if n <= 0.0 {
+                CellValue::Error("#VALUE! log of non-positive".to_string())
+            } else {
+                CellValue::Number(n.log10())
+            }
+        }
+        "CONCATENATE" | "CONCAT" => {
+            let mut result = String::new();
+            for arg in args {
+                let v = evaluate(arg, ctx);
+                if let CellValue::Error(e) = &v {
+                    return CellValue::Error(e.clone());
+                }
+                result.push_str(&to_string_val(&v));
+            }
+            CellValue::Text(result)
+        }
+        "LEFT" => {
+            if args.is_empty() || args.len() > 2 {
+                return CellValue::Error("#ARGS! LEFT(text, [count])".to_string());
+            }
+            let text = to_string_val(&evaluate(&args[0], ctx));
+            let count = if args.len() == 2 {
+                match to_number(&evaluate(&args[1], ctx)) {
+                    Ok(n) => n.max(0.0) as usize,
+                    Err(e) => return e,
+                }
+            } else {
+                1
+            };
+            let chars: Vec<char> = text.chars().collect();
+            let result: String = chars.into_iter().take(count).collect();
+            CellValue::Text(result)
+        }
+        "RIGHT" => {
+            if args.is_empty() || args.len() > 2 {
+                return CellValue::Error("#ARGS! RIGHT(text, [count])".to_string());
+            }
+            let text = to_string_val(&evaluate(&args[0], ctx));
+            let count = if args.len() == 2 {
+                match to_number(&evaluate(&args[1], ctx)) {
+                    Ok(n) => n.max(0.0) as usize,
+                    Err(e) => return e,
+                }
+            } else {
+                1
+            };
+            let chars: Vec<char> = text.chars().collect();
+            let start = chars.len().saturating_sub(count);
+            let result: String = chars[start..].iter().collect();
+            CellValue::Text(result)
+        }
+        "MID" => {
+            if args.len() != 3 {
+                return CellValue::Error("#ARGS! MID(text, start, count)".to_string());
+            }
+            let text = to_string_val(&evaluate(&args[0], ctx));
+            let start = match to_number(&evaluate(&args[1], ctx)) {
+                Ok(n) => (n.max(1.0) as usize).saturating_sub(1), // 1-based
+                Err(e) => return e,
+            };
+            let count = match to_number(&evaluate(&args[2], ctx)) {
+                Ok(n) => n.max(0.0) as usize,
+                Err(e) => return e,
+            };
+            let chars: Vec<char> = text.chars().collect();
+            let end = (start + count).min(chars.len());
+            let start = start.min(chars.len());
+            let result: String = chars[start..end].iter().collect();
+            CellValue::Text(result)
+        }
+        "LEN" => {
+            if args.len() != 1 {
+                return CellValue::Error("#ARGS! LEN(text)".to_string());
+            }
+            let text = to_string_val(&evaluate(&args[0], ctx));
+            CellValue::Number(text.chars().count() as f64)
+        }
+        "UPPER" => {
+            if args.len() != 1 {
+                return CellValue::Error("#ARGS! UPPER(text)".to_string());
+            }
+            let text = to_string_val(&evaluate(&args[0], ctx));
+            CellValue::Text(text.to_uppercase())
+        }
+        "LOWER" => {
+            if args.len() != 1 {
+                return CellValue::Error("#ARGS! LOWER(text)".to_string());
+            }
+            let text = to_string_val(&evaluate(&args[0], ctx));
+            CellValue::Text(text.to_lowercase())
+        }
+        "TRIM" => {
+            if args.len() != 1 {
+                return CellValue::Error("#ARGS! TRIM(text)".to_string());
+            }
+            let text = to_string_val(&evaluate(&args[0], ctx));
+            CellValue::Text(text.trim().to_string())
+        }
+        "TEXT" => {
+            // Simple TEXT(value) — just converts to string
+            if args.len() != 1 {
+                return CellValue::Error("#ARGS! TEXT(value)".to_string());
+            }
+            let val = evaluate(&args[0], ctx);
+            CellValue::Text(to_string_val(&val))
+        }
+        "VALUE" => {
+            if args.len() != 1 {
+                return CellValue::Error("#ARGS! VALUE(text)".to_string());
+            }
+            let val = evaluate(&args[0], ctx);
+            match to_number(&val) {
+                Ok(n) => CellValue::Number(n),
+                Err(e) => e,
+            }
         }
         _ => CellValue::Error(format!("#NAME? {}", name)),
     }
@@ -1020,5 +1416,269 @@ mod tests {
             t.cells[&(0, 3)].computed,
             CellValue::Text("1000".to_string())
         );
+    }
+
+    // --- String literal tests ---
+
+    #[test]
+    fn test_string_literal() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, r#"="hello""#.to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 0)].computed,
+            CellValue::Text("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn test_string_concat_operator() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, r#"="hello" & " " & "world""#.to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 0)].computed,
+            CellValue::Text("hello world".to_string())
+        );
+    }
+
+    #[test]
+    fn test_string_in_function_arg() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, r#"=LEN("abcdef")"#.to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(6.0));
+    }
+
+    // --- IF tests ---
+
+    #[test]
+    fn test_if_true() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=IF(1, 10, 20)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(10.0));
+    }
+
+    #[test]
+    fn test_if_false() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=IF(0, 10, 20)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(20.0));
+    }
+
+    #[test]
+    fn test_if_no_else() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=IF(0, 10)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(0.0));
+    }
+
+    #[test]
+    fn test_if_with_comparison() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "5".to_string());
+        t.set_cell_source(0, 1, "=IF(A1>3, 100, 0)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(100.0));
+    }
+
+    #[test]
+    fn test_if_with_string_result() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "10".to_string());
+        t.set_cell_source(0, 1, r#"=IF(A1>=10, "pass", "fail")"#.to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 1)].computed,
+            CellValue::Text("pass".to_string())
+        );
+    }
+
+    // --- MIN/MAX tests ---
+
+    #[test]
+    fn test_min() {
+        let mut t = make_table(4, 1);
+        t.set_cell_source(0, 0, "5".to_string());
+        t.set_cell_source(0, 1, "2".to_string());
+        t.set_cell_source(0, 2, "8".to_string());
+        t.set_cell_source(0, 3, "=MIN(A1:A3)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 3)].computed, CellValue::Number(2.0));
+    }
+
+    #[test]
+    fn test_max() {
+        let mut t = make_table(4, 1);
+        t.set_cell_source(0, 0, "5".to_string());
+        t.set_cell_source(0, 1, "2".to_string());
+        t.set_cell_source(0, 2, "8".to_string());
+        t.set_cell_source(0, 3, "=MAX(A1:A3)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 3)].computed, CellValue::Number(8.0));
+    }
+
+    // --- COUNT tests ---
+
+    #[test]
+    fn test_count() {
+        let mut t = make_table(4, 1);
+        t.set_cell_source(0, 0, "5".to_string());
+        t.set_cell_source(0, 1, "hello".to_string());
+        // row 2 empty
+        t.set_cell_source(0, 3, "=COUNT(A1:A3)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 3)].computed, CellValue::Number(1.0));
+    }
+
+    #[test]
+    fn test_counta() {
+        let mut t = make_table(4, 1);
+        t.set_cell_source(0, 0, "5".to_string());
+        t.set_cell_source(0, 1, "hello".to_string());
+        // row 2 empty
+        t.set_cell_source(0, 3, "=COUNTA(A1:A3)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 3)].computed, CellValue::Number(2.0));
+    }
+
+    // --- ROUND / ABS tests ---
+
+    #[test]
+    fn test_round() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=ROUND(1.567, 2)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(1.57));
+    }
+
+    #[test]
+    fn test_round_no_decimals() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=ROUND(1.567)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(2.0));
+    }
+
+    #[test]
+    fn test_abs() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=ABS(-42)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(42.0));
+    }
+
+    // --- Math functions ---
+
+    #[test]
+    fn test_floor_ceil() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "=FLOOR(2.7)".to_string());
+        t.set_cell_source(0, 1, "=CEIL(2.3)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(2.0));
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(3.0));
+    }
+
+    #[test]
+    fn test_mod() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=MOD(10, 3)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(1.0));
+    }
+
+    #[test]
+    fn test_power_sqrt() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "=POWER(2, 10)".to_string());
+        t.set_cell_source(0, 1, "=SQRT(144)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(1024.0));
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(12.0));
+    }
+
+    // --- String functions ---
+
+    #[test]
+    fn test_concatenate() {
+        let mut t = make_table(3, 1);
+        t.set_cell_source(0, 0, "hello".to_string());
+        t.set_cell_source(0, 1, "world".to_string());
+        t.set_cell_source(0, 2, r#"=CONCATENATE(A1, " ", A2)"#.to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 2)].computed,
+            CellValue::Text("hello world".to_string())
+        );
+    }
+
+    #[test]
+    fn test_left_right_mid() {
+        let mut t = make_table(4, 1);
+        t.set_cell_source(0, 0, "abcdef".to_string());
+        t.set_cell_source(0, 1, "=LEFT(A1, 3)".to_string());
+        t.set_cell_source(0, 2, "=RIGHT(A1, 2)".to_string());
+        t.set_cell_source(0, 3, "=MID(A1, 2, 3)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 1)].computed,
+            CellValue::Text("abc".to_string())
+        );
+        assert_eq!(t.cells[&(0, 2)].computed, CellValue::Text("ef".to_string()));
+        assert_eq!(
+            t.cells[&(0, 3)].computed,
+            CellValue::Text("bcd".to_string())
+        );
+    }
+
+    #[test]
+    fn test_len() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "hello".to_string());
+        t.set_cell_source(0, 1, "=LEN(A1)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(5.0));
+    }
+
+    #[test]
+    fn test_upper_lower_trim() {
+        let mut t = make_table(3, 1);
+        t.set_cell_source(0, 0, r#"=UPPER("hello")"#.to_string());
+        t.set_cell_source(0, 1, r#"=LOWER("HELLO")"#.to_string());
+        t.set_cell_source(0, 2, r#"=TRIM("  hi  ")"#.to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(0, 0)].computed,
+            CellValue::Text("HELLO".to_string())
+        );
+        assert_eq!(
+            t.cells[&(0, 1)].computed,
+            CellValue::Text("hello".to_string())
+        );
+        assert_eq!(t.cells[&(0, 2)].computed, CellValue::Text("hi".to_string()));
+    }
+
+    // --- Comparison tests ---
+
+    #[test]
+    fn test_comparisons() {
+        let mut t = make_table(6, 1);
+        t.set_cell_source(0, 0, "=5>3".to_string());
+        t.set_cell_source(0, 1, "=5<3".to_string());
+        t.set_cell_source(0, 2, "=5>=5".to_string());
+        t.set_cell_source(0, 3, "=5<=4".to_string());
+        t.set_cell_source(0, 4, "=5=5".to_string());
+        t.set_cell_source(0, 5, "=5<>3".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(t.cells[&(0, 0)].computed, CellValue::Number(1.0)); // true
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(0.0)); // false
+        assert_eq!(t.cells[&(0, 2)].computed, CellValue::Number(1.0)); // true
+        assert_eq!(t.cells[&(0, 3)].computed, CellValue::Number(0.0)); // false
+        assert_eq!(t.cells[&(0, 4)].computed, CellValue::Number(1.0)); // true
+        assert_eq!(t.cells[&(0, 5)].computed, CellValue::Number(1.0)); // true
     }
 }

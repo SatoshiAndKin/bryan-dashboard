@@ -66,6 +66,126 @@ pub const BUILTIN_FUNCTIONS: &[FuncInfo] = &[
         syntax: "ETH_BALANCE(address)",
         description: "Returns the ETH balance of an address (in ETH).",
     },
+    FuncInfo {
+        name: "IF",
+        syntax: "IF(condition, then, [else])",
+        description: "Returns then if condition is true (non-zero), else otherwise.",
+    },
+    FuncInfo {
+        name: "MIN",
+        syntax: "MIN(value1, [value2], ...)",
+        description: "Returns the smallest number, ignoring empty cells.",
+    },
+    FuncInfo {
+        name: "MAX",
+        syntax: "MAX(value1, [value2], ...)",
+        description: "Returns the largest number, ignoring empty cells.",
+    },
+    FuncInfo {
+        name: "COUNT",
+        syntax: "COUNT(value1, [value2], ...)",
+        description: "Counts cells containing numbers.",
+    },
+    FuncInfo {
+        name: "COUNTA",
+        syntax: "COUNTA(value1, [value2], ...)",
+        description: "Counts non-empty cells.",
+    },
+    FuncInfo {
+        name: "ROUND",
+        syntax: "ROUND(number, [decimals])",
+        description: "Rounds a number to a given number of decimal places.",
+    },
+    FuncInfo {
+        name: "ABS",
+        syntax: "ABS(number)",
+        description: "Returns the absolute value of a number.",
+    },
+    FuncInfo {
+        name: "FLOOR",
+        syntax: "FLOOR(number, [significance])",
+        description: "Rounds down to the nearest integer or multiple.",
+    },
+    FuncInfo {
+        name: "CEIL",
+        syntax: "CEIL(number, [significance])",
+        description: "Rounds up to the nearest integer or multiple.",
+    },
+    FuncInfo {
+        name: "MOD",
+        syntax: "MOD(number, divisor)",
+        description: "Returns the remainder after division.",
+    },
+    FuncInfo {
+        name: "POWER",
+        syntax: "POWER(base, exponent)",
+        description: "Returns base raised to a power.",
+    },
+    FuncInfo {
+        name: "SQRT",
+        syntax: "SQRT(number)",
+        description: "Returns the square root.",
+    },
+    FuncInfo {
+        name: "LN",
+        syntax: "LN(number)",
+        description: "Returns the natural logarithm.",
+    },
+    FuncInfo {
+        name: "LOG",
+        syntax: "LOG(number)",
+        description: "Returns the base-10 logarithm.",
+    },
+    FuncInfo {
+        name: "CONCATENATE",
+        syntax: "CONCATENATE(text1, text2, ...)",
+        description: "Joins text strings. Also: CONCAT() or the & operator.",
+    },
+    FuncInfo {
+        name: "LEFT",
+        syntax: "LEFT(text, [count])",
+        description: "Returns the first N characters.",
+    },
+    FuncInfo {
+        name: "RIGHT",
+        syntax: "RIGHT(text, [count])",
+        description: "Returns the last N characters.",
+    },
+    FuncInfo {
+        name: "MID",
+        syntax: "MID(text, start, count)",
+        description: "Returns characters from the middle of a string (1-based start).",
+    },
+    FuncInfo {
+        name: "LEN",
+        syntax: "LEN(text)",
+        description: "Returns the length of a string.",
+    },
+    FuncInfo {
+        name: "UPPER",
+        syntax: "UPPER(text)",
+        description: "Converts text to uppercase.",
+    },
+    FuncInfo {
+        name: "LOWER",
+        syntax: "LOWER(text)",
+        description: "Converts text to lowercase.",
+    },
+    FuncInfo {
+        name: "TRIM",
+        syntax: "TRIM(text)",
+        description: "Removes leading and trailing whitespace.",
+    },
+    FuncInfo {
+        name: "TEXT",
+        syntax: "TEXT(value)",
+        description: "Converts a value to text.",
+    },
+    FuncInfo {
+        name: "VALUE",
+        syntax: "VALUE(text)",
+        description: "Converts text to a number.",
+    },
 ];
 
 pub const OPERATORS: &[FuncInfo] = &[

@@ -32,7 +32,61 @@ impl Parser {
     }
 
     pub fn parse_expr(&mut self) -> Result<Expr, String> {
-        self.parse_additive()
+        self.parse_comparison()
+    }
+
+    fn parse_comparison(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_concat()?;
+        loop {
+            match self.peek() {
+                Token::Gt => {
+                    self.advance();
+                    let right = self.parse_concat()?;
+                    left = Expr::BinOp(Box::new(left), BinOp::Gt, Box::new(right));
+                }
+                Token::Lt => {
+                    self.advance();
+                    let right = self.parse_concat()?;
+                    left = Expr::BinOp(Box::new(left), BinOp::Lt, Box::new(right));
+                }
+                Token::Gte => {
+                    self.advance();
+                    let right = self.parse_concat()?;
+                    left = Expr::BinOp(Box::new(left), BinOp::Gte, Box::new(right));
+                }
+                Token::Lte => {
+                    self.advance();
+                    let right = self.parse_concat()?;
+                    left = Expr::BinOp(Box::new(left), BinOp::Lte, Box::new(right));
+                }
+                Token::Eq => {
+                    self.advance();
+                    let right = self.parse_concat()?;
+                    left = Expr::BinOp(Box::new(left), BinOp::Eq, Box::new(right));
+                }
+                Token::Neq => {
+                    self.advance();
+                    let right = self.parse_concat()?;
+                    left = Expr::BinOp(Box::new(left), BinOp::Neq, Box::new(right));
+                }
+                _ => break,
+            }
+        }
+        Ok(left)
+    }
+
+    fn parse_concat(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_additive()?;
+        loop {
+            if *self.peek() == Token::Ampersand {
+                self.advance();
+                let right = self.parse_additive()?;
+                left = Expr::BinOp(Box::new(left), BinOp::Concat, Box::new(right));
+            } else {
+                break;
+            }
+        }
+        Ok(left)
     }
 
     fn parse_additive(&mut self) -> Result<Expr, String> {
@@ -178,6 +232,10 @@ impl Parser {
             Token::Number(n) => {
                 self.advance();
                 Ok(Expr::Number(n))
+            }
+            Token::StringLit(s) => {
+                self.advance();
+                Ok(Expr::StringLit(s))
             }
             Token::Ident(_) => {
                 // Try cross-table ref first (TABLE_NAME::A1)

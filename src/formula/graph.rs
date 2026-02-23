@@ -10,7 +10,7 @@ use crate::model::table::TableModel;
 fn extract_local_deps(expr: &Expr) -> Vec<CellRef> {
     let mut deps = Vec::new();
     match expr {
-        Expr::Number(_) => {}
+        Expr::Number(_) | Expr::StringLit(_) => {}
         Expr::CellRef(r) => deps.push(r.clone()),
         Expr::CrossTableRef(_, _, _) => {} // external dep, not tracked in local graph
         Expr::Range(start, end) => {

@@ -3,6 +3,7 @@ use crate::model::CellRef;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Number(f64),
+    StringLit(String),
     CellRef(CellRef),
     /// Optional sheet + table: Table 1::A1 or Sheet 1::Table 1::A1
     CrossTableRef(Option<String>, String, CellRef),
@@ -13,7 +14,6 @@ pub enum Expr {
     UnaryNeg(Box<Expr>),
     FuncCall(String, Vec<Expr>),
     /// A named column reference like "Price" that resolves to a column by header name.
-    /// (name, row) — the row comes from the context of the cell containing the formula.
     NamedRef(String),
 }
 
@@ -23,4 +23,12 @@ pub enum BinOp {
     Sub,
     Mul,
     Div,
+    Gt,
+    Lt,
+    Gte,
+    Lte,
+    Eq,
+    Neq,
+    /// String concatenation via &
+    Concat,
 }
