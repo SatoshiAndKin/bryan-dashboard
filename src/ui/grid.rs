@@ -4,6 +4,21 @@ use crate::model::cell::col_index_to_label;
 use crate::model::table::TableModel;
 use crate::ui::cell_view::CellView;
 
+/// Tracks an in-progress column or row resize drag
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ResizeDrag {
+    Col {
+        col: u32,
+        start_x: f64,
+        start_width: f32,
+    },
+    Row {
+        row: u32,
+        start_y: f64,
+        start_height: f32,
+    },
+}
+
 #[component]
 pub fn SheetView(
     table: TableModel,
@@ -27,12 +42,36 @@ pub fn SheetView(
     on_drag_drop: EventHandler<(u32, u32)>,
     on_drag_end: EventHandler<()>,
 ) -> Element {
+    let mut resize_drag: Signal<Option<ResizeDrag>> = use_signal(|| None);
+
     rsx! {
         div { class: "sheet-view",
             onkeydown: move |e| {
                 if e.key() == Key::Escape {
                     on_cancel_edit.call(());
                 }
+            },
+            onmousemove: move |e| {
+                if let Some(drag) = *resize_drag.read() {
+                    match drag {
+                        ResizeDrag::Col { col, start_x, start_width } => {
+                            let delta = e.page_coordinates().x - start_x;
+                            let new_w = (start_width as f64 + delta).max(30.0) as f32;
+                            on_resize_col.call((col, new_w));
+                        }
+                        ResizeDrag::Row { row, start_y, start_height } => {
+                            let delta = e.page_coordinates().y - start_y;
+                            let new_h = (start_height as f64 + delta).max(20.0) as f32;
+                            on_resize_row.call((row, new_h));
+                        }
+                    }
+                }
+            },
+            onmouseup: move |_| {
+                resize_drag.set(None);
+            },
+            onmouseleave: move |_| {
+                resize_drag.set(None);
             },
             table {
                 class: "grid-table",
@@ -50,13 +89,29 @@ pub fn SheetView(
                                     th {
                                         class: if is_custom { "col-header named clickable" } else { "col-header clickable" },
                                         role: "columnheader",
-                                        style: "width: {table.col_width(c)}px; min-width: {table.col_width(c)}px;",
+                                        style: "width: {table.col_width(c)}px; min-width: {table.col_width(c)}px; position: relative;",
                                         onclick: move |_| on_select_col.call(c),
                                         if is_custom {
                                             div { class: "header-custom-name", "{header_name}" }
                                             div { class: "header-letter", "{fallback}" }
                                         } else {
                                             "{fallback}"
+                                        }
+                                        {
+                                            let col_w = table.col_width(c);
+                                            rsx! {
+                                                div {
+                                                    class: "col-resize-handle",
+                                                    onmousedown: move |e: MouseEvent| {
+                                                        e.stop_propagation();
+                                                        resize_drag.set(Some(ResizeDrag::Col {
+                                                            col: c,
+                                                            start_x: e.page_coordinates().x,
+                                                            start_width: col_w,
+                                                        }));
+                                                    },
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -77,13 +132,29 @@ pub fn SheetView(
                                     td {
                                         class: if is_custom { "row-header named clickable" } else { "row-header clickable" },
                                         role: "rowheader",
-                                        style: "height: {table.row_height(r)}px;",
+                                        style: "height: {table.row_height(r)}px; position: relative;",
                                         onclick: move |_| on_select_row.call(r),
                                         if is_custom {
                                             div { class: "header-custom-name", "{row_name}" }
                                             div { class: "header-number", "{fallback}" }
                                         } else {
                                             "{fallback}"
+                                        }
+                                        {
+                                            let row_h = table.row_height(r);
+                                            rsx! {
+                                                div {
+                                                    class: "row-resize-handle",
+                                                    onmousedown: move |e: MouseEvent| {
+                                                        e.stop_propagation();
+                                                        resize_drag.set(Some(ResizeDrag::Row {
+                                                            row: r,
+                                                            start_y: e.page_coordinates().y,
+                                                            start_height: row_h,
+                                                        }));
+                                                    },
+                                                }
+                                            }
                                         }
                                     }
                                 }
