@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use super::table::{TableId, TableModel};
 use super::workbook::unique_name;
-use crate::formula::graph::recalculate_table_with_siblings;
+use crate::eth::BlockHead;
+use crate::formula::graph::{recalculate_table_with_ctx, recalculate_table_with_siblings};
 
 pub type SheetId = u64;
 
@@ -120,7 +121,16 @@ impl Sheet {
         }
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn recalculate_dependents(&mut self, changed_table_id: TableId) {
+        self.recalculate_dependents_with_block_head(changed_table_id, None);
+    }
+
+    pub fn recalculate_dependents_with_block_head(
+        &mut self,
+        changed_table_id: TableId,
+        block_head: Option<&BlockHead>,
+    ) {
         // After a table changes, recalculate all other tables that might reference it
         let snapshot: Vec<_> = self.tables.clone();
         for table in &mut self.tables {
@@ -135,7 +145,7 @@ impl Sheet {
                     .filter(|t| t.id != table.id)
                     .cloned()
                     .collect();
-                recalculate_table_with_siblings(table, &siblings);
+                recalculate_table_with_ctx(table, &siblings, block_head, None, None);
             }
         }
     }

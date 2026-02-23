@@ -9,7 +9,7 @@ use wasm_bindgen_futures::JsFuture;
 #[cfg(target_arch = "wasm32")]
 use crate::eth::parse_block_head;
 use crate::eth::BlockHead;
-use crate::formula::graph::{recalculate_table, recalculate_table_with_ctx};
+use crate::formula::graph::recalculate_table_with_ctx;
 use crate::model::cell::{col_index_to_label, NumberFormat, TextAlign};
 use crate::model::settings::AppSettings;
 use crate::model::sheet::SheetId;
@@ -102,6 +102,31 @@ fn snap_no_overlap(sheet: &mut Sheet, moved_tid: TableId) {
         }
         if !nudged {
             break;
+        }
+    }
+}
+
+fn recalculate_table_and_dependents_with_block_head(
+    sheet: &mut Sheet,
+    table_id: TableId,
+    block_head: Option<&BlockHead>,
+) {
+    if let Some(table) = sheet.table_by_id_mut(table_id) {
+        recalculate_table_with_ctx(table, &[], block_head, None, None);
+    }
+    sheet.recalculate_dependents_with_block_head(table_id, block_head);
+}
+
+fn focus_active_editor_input() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(el) = web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.query_selector(".cell.editing .cell-input").ok().flatten())
+        {
+            if let Ok(html_el) = el.dyn_into::<web_sys::HtmlElement>() {
+                let _ = html_el.focus();
+            }
         }
     }
 }
@@ -457,6 +482,8 @@ pub fn WorkbookShell() -> Element {
                         (u.clipboard, u.selected)
                     };
                     if let (Some((src_tid, sc0, sr0, sc1, sr1)), Some((dst_tid, dc, dr))) = (clipboard, selected) {
+                        let bh = block_heads.peek().get(&1).cloned();
+                        let bh_ref = bh.as_ref();
                         let mut wb = workbook.write();
                         if let Some(sheet) = wb.active_sheet_mut() {
                             let block_w = sc1 - sc0 + 1;
@@ -480,9 +507,10 @@ pub fn WorkbookShell() -> Element {
                                             }
                                         }
                                     }
-                                    recalculate_table(table);
                                 }
-                                sheet.recalculate_dependents(src_tid);
+                                recalculate_table_and_dependents_with_block_head(
+                                    sheet, src_tid, bh_ref,
+                                );
                             } else {
                                 // Cross-table paste: copy computed values
                                 let sources: Vec<(u32, u32, String)> = {
@@ -518,9 +546,10 @@ pub fn WorkbookShell() -> Element {
                                     for (dc_off, dr_off, source) in &sources {
                                         dst_table.set_cell_source(dc + dc_off, dr + dr_off, source.clone());
                                     }
-                                    recalculate_table(dst_table);
                                 }
-                                sheet.recalculate_dependents(dst_tid);
+                                recalculate_table_and_dependents_with_block_head(
+                                    sheet, dst_tid, bh_ref,
+                                );
                             }
                         }
                         save(&wb);
@@ -531,6 +560,8 @@ pub fn WorkbookShell() -> Element {
                     let range = ui.read().selection_range();
                     if let Some((tid, c0, r0, c1, r1)) = range {
                         ui.write().clipboard = Some((tid, c0, r0, c1, r1));
+                        let bh = block_heads.peek().get(&1).cloned();
+                        let bh_ref = bh.as_ref();
                         let mut wb = workbook.write();
                         if let Some(sheet) = wb.active_sheet_mut() {
                             if let Some(table) = sheet.table_by_id_mut(tid) {
@@ -539,9 +570,8 @@ pub fn WorkbookShell() -> Element {
                                         table.set_cell_source(col, row, String::new());
                                     }
                                 }
-                                recalculate_table(table);
                             }
-                            sheet.recalculate_dependents(tid);
+                            recalculate_table_and_dependents_with_block_head(sheet, tid, bh_ref);
                         }
                         save(&wb);
                     }
@@ -552,22 +582,26 @@ pub fn WorkbookShell() -> Element {
                     e.prevent_default();
                     let entry = ui.write().undo_stack.pop();
                     if let Some(entry) = entry {
+                        let bh = block_heads.peek().get(&1).cloned();
+                        let bh_ref = bh.as_ref();
                         let mut wb = workbook.write();
                         if let Some(sheet) = wb.active_sheet_mut() {
                             match &entry {
                                 UndoEntry::CellEdit { table_id, col, row, old_source, .. } => {
                                     if let Some(table) = sheet.table_by_id_mut(*table_id) {
                                         table.set_cell_source(*col, *row, old_source.clone());
-                                        recalculate_table(table);
                                     }
-                                    sheet.recalculate_dependents(*table_id);
+                                    recalculate_table_and_dependents_with_block_head(
+                                        sheet, *table_id, bh_ref,
+                                    );
                                 }
                                 UndoEntry::TableSnapshot { table_id, before, .. } => {
                                     if let Some(table) = sheet.table_by_id_mut(*table_id) {
                                         *table = *before.clone();
-                                        recalculate_table(table);
                                     }
-                                    sheet.recalculate_dependents(*table_id);
+                                    recalculate_table_and_dependents_with_block_head(
+                                        sheet, *table_id, bh_ref,
+                                    );
                                 }
                             }
                         }
@@ -583,22 +617,26 @@ pub fn WorkbookShell() -> Element {
                     e.prevent_default();
                     let entry = ui.write().redo_stack.pop();
                     if let Some(entry) = entry {
+                        let bh = block_heads.peek().get(&1).cloned();
+                        let bh_ref = bh.as_ref();
                         let mut wb = workbook.write();
                         if let Some(sheet) = wb.active_sheet_mut() {
                             match &entry {
                                 UndoEntry::CellEdit { table_id, col, row, new_source, .. } => {
                                     if let Some(table) = sheet.table_by_id_mut(*table_id) {
                                         table.set_cell_source(*col, *row, new_source.clone());
-                                        recalculate_table(table);
                                     }
-                                    sheet.recalculate_dependents(*table_id);
+                                    recalculate_table_and_dependents_with_block_head(
+                                        sheet, *table_id, bh_ref,
+                                    );
                                 }
                                 UndoEntry::TableSnapshot { table_id, after, .. } => {
                                     if let Some(table) = sheet.table_by_id_mut(*table_id) {
                                         *table = *after.clone();
-                                        recalculate_table(table);
                                     }
-                                    sheet.recalculate_dependents(*table_id);
+                                    recalculate_table_and_dependents_with_block_head(
+                                        sheet, *table_id, bh_ref,
+                                    );
                                 }
                             }
                         }
@@ -629,14 +667,17 @@ pub fn WorkbookShell() -> Element {
                                     .unwrap_or_default()
                             };
                             {
+                                let bh = block_heads.peek().get(&1).cloned();
+                                let bh_ref = bh.as_ref();
                                 let mut wb = workbook.write();
                                 let sid = esid.unwrap_or(wb.active_sheet_id);
                                 if let Some(sheet) = wb.sheets.iter_mut().find(|s| s.id == sid) {
                                     if let Some(table) = sheet.table_by_id_mut(etid) {
                                         table.set_cell_source(col, row, new_source.clone());
-                                        recalculate_table(table);
                                     }
-                                    sheet.recalculate_dependents(etid);
+                                    recalculate_table_and_dependents_with_block_head(
+                                        sheet, etid, bh_ref,
+                                    );
                                 }
                                 save(&wb);
                             }
@@ -710,6 +751,8 @@ pub fn WorkbookShell() -> Element {
                                     // Delete all cells in selection range
                                     let range = ui.read().selection_range();
                                     if let Some((range_tid, min_c, min_r, max_c, max_r)) = range {
+                                        let bh = block_heads.peek().get(&1).cloned();
+                                        let bh_ref = bh.as_ref();
                                         let mut any_changed = false;
                                         let mut wb = workbook.write();
                                         if let Some(sheet) = wb.active_sheet_mut() {
@@ -725,9 +768,12 @@ pub fn WorkbookShell() -> Element {
                                                         }
                                                     }
                                                 }
-                                                if any_changed { recalculate_table(table); }
                                             }
-                                            if any_changed { sheet.recalculate_dependents(range_tid); }
+                                            if any_changed {
+                                                recalculate_table_and_dependents_with_block_head(
+                                                    sheet, range_tid, bh_ref,
+                                                );
+                                            }
                                         }
                                         if any_changed {
                                             save(&wb);
@@ -1504,6 +1550,7 @@ pub fn WorkbookShell() -> Element {
                                                         );
                                                         u.edit_buffer.push_str(&label);
                                                     }
+                                                    focus_active_editor_input();
                                                 } else {
                                                     {
                                                         let mut wb = workbook.write();
@@ -1622,14 +1669,17 @@ pub fn WorkbookShell() -> Element {
                                                             .unwrap_or(1)
                                                     };
                                                     {
+                                                        let bh = block_heads.peek().get(&1).cloned();
+                                                        let bh_ref = bh.as_ref();
                                                         let mut wb = workbook.write();
                                                         let target_sid = esid.unwrap_or(wb.active_sheet_id);
                                                         if let Some(sheet) = wb.sheets.iter_mut().find(|s| s.id == target_sid) {
                                                             if let Some(table) = sheet.table_by_id_mut(etid) {
                                                                 table.set_cell_source(col, row, new_source.clone());
-                                                                recalculate_table(table);
                                                             }
-                                                            sheet.recalculate_dependents(etid);
+                                                            recalculate_table_and_dependents_with_block_head(
+                                                                sheet, etid, bh_ref,
+                                                            );
                                                         }
                                                         save(&wb);
                                                     }
@@ -1681,13 +1731,16 @@ pub fn WorkbookShell() -> Element {
                                                 let drag_from = ui.read().dragging;
                                                 if let Some((ftid, fc, fr)) = drag_from {
                                                     if ftid == tid && (fc, fr) != (col, row) {
+                                                        let bh = block_heads.peek().get(&1).cloned();
+                                                        let bh_ref = bh.as_ref();
                                                         let mut wb = workbook.write();
                                                         if let Some(sheet) = wb.active_sheet_mut() {
                                                             if let Some(table) = sheet.table_by_id_mut(tid) {
                                                                 table.move_cell((fc, fr), (col, row));
-                                                                recalculate_table(table);
                                                             }
-                                                            sheet.recalculate_dependents(tid);
+                                                            recalculate_table_and_dependents_with_block_head(
+                                                                sheet, tid, bh_ref,
+                                                            );
                                                         }
                                                         save(&wb);
                                                     }
@@ -1797,6 +1850,8 @@ pub fn WorkbookShell() -> Element {
                                     }
                                     PendingDelete::Rows { tid, min_row, max_row } => {
                                         let tid = *tid;
+                                        let bh = block_heads.peek().get(&1).cloned();
+                                        let bh_ref = bh.as_ref();
                                         let mut wb = workbook.write();
                                         if let Some(sheet) = wb.active_sheet_mut() {
                                             if let Some(table) = sheet.table_by_id_mut(tid) {
@@ -1804,7 +1859,6 @@ pub fn WorkbookShell() -> Element {
                                                 for r in (*min_row..=*max_row).rev() {
                                                     table.delete_row(r);
                                                 }
-                                                recalculate_table(table);
                                                 let after = table.clone();
                                                 let mut u = ui.write();
                                                 u.undo_stack.push(UndoEntry::TableSnapshot {
@@ -1812,7 +1866,9 @@ pub fn WorkbookShell() -> Element {
                                                 });
                                                 u.redo_stack.clear();
                                             }
-                                            sheet.recalculate_dependents(tid);
+                                            recalculate_table_and_dependents_with_block_head(
+                                                sheet, tid, bh_ref,
+                                            );
                                         }
                                         save(&wb);
                                         let mut u = ui.write();
@@ -1824,6 +1880,8 @@ pub fn WorkbookShell() -> Element {
                                     }
                                     PendingDelete::Cols { tid, min_col, max_col } => {
                                         let tid = *tid;
+                                        let bh = block_heads.peek().get(&1).cloned();
+                                        let bh_ref = bh.as_ref();
                                         let mut wb = workbook.write();
                                         if let Some(sheet) = wb.active_sheet_mut() {
                                             if let Some(table) = sheet.table_by_id_mut(tid) {
@@ -1831,7 +1889,6 @@ pub fn WorkbookShell() -> Element {
                                                 for c in (*min_col..=*max_col).rev() {
                                                     table.delete_col(c);
                                                 }
-                                                recalculate_table(table);
                                                 let after = table.clone();
                                                 let mut u = ui.write();
                                                 u.undo_stack.push(UndoEntry::TableSnapshot {
@@ -1839,7 +1896,9 @@ pub fn WorkbookShell() -> Element {
                                                 });
                                                 u.redo_stack.clear();
                                             }
-                                            sheet.recalculate_dependents(tid);
+                                            recalculate_table_and_dependents_with_block_head(
+                                                sheet, tid, bh_ref,
+                                            );
                                         }
                                         save(&wb);
                                         let mut u = ui.write();

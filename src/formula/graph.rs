@@ -40,6 +40,7 @@ fn extract_local_deps(expr: &Expr) -> Vec<CellRef> {
     deps
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn recalculate_table(table: &mut TableModel) {
     recalculate_table_full(table, &[], None);
 }
