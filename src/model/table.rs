@@ -79,6 +79,31 @@ pub struct TableModel {
     /// Custom row names (override, from header col content)
     #[serde(default)]
     pub row_names: HashMap<u32, String>,
+    /// Conditional formatting rules applied in order
+    #[serde(default)]
+    pub cond_formats: Vec<ConditionalRule>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConditionalRule {
+    /// Column this rule applies to (all data rows in the column)
+    pub col: u32,
+    pub condition: ConditionalOp,
+    pub threshold: f64,
+    /// Background color to apply when condition is met
+    pub bg_color: Option<String>,
+    /// Text color to apply when condition is met
+    pub fg_color: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ConditionalOp {
+    GreaterThan,
+    LessThan,
+    GreaterEqual,
+    LessEqual,
+    Equal,
+    NotEqual,
 }
 
 impl TableModel {
@@ -98,6 +123,7 @@ impl TableModel {
             footer_rows: 0,
             col_names: HashMap::new(),
             row_names: HashMap::new(),
+            cond_formats: Vec::new(),
         }
     }
 
@@ -608,6 +634,34 @@ impl TableModel {
         self.rows -= removed;
 
         removed
+    }
+
+    /// Returns (bg_color, fg_color) overrides from conditional formatting rules for a cell.
+    pub fn cond_format_style(&self, col: u32, row: u32) -> (Option<&str>, Option<&str>) {
+        if self.cond_formats.is_empty() {
+            return (None, None);
+        }
+        let val = match self.cells.get(&(col, row)).map(|c| &c.computed) {
+            Some(super::cell::CellValue::Number(n)) => *n,
+            _ => return (None, None),
+        };
+        for rule in &self.cond_formats {
+            if rule.col != col {
+                continue;
+            }
+            let matches = match rule.condition {
+                ConditionalOp::GreaterThan => val > rule.threshold,
+                ConditionalOp::LessThan => val < rule.threshold,
+                ConditionalOp::GreaterEqual => val >= rule.threshold,
+                ConditionalOp::LessEqual => val <= rule.threshold,
+                ConditionalOp::Equal => (val - rule.threshold).abs() < f64::EPSILON,
+                ConditionalOp::NotEqual => (val - rule.threshold).abs() >= f64::EPSILON,
+            };
+            if matches {
+                return (rule.bg_color.as_deref(), rule.fg_color.as_deref());
+            }
+        }
+        (None, None)
     }
 
     pub fn cell_ref_value(&self, cell_ref: &CellRef) -> &CellModel {
@@ -1328,5 +1382,111 @@ mod tests {
         let removed = t.filter_rows(1, |_| false);
         assert_eq!(removed, 4);
         assert_eq!(t.rows, 1); // only header row
+    }
+
+    // --- Conditional formatting tests ---
+
+    #[test]
+    fn test_cond_format_greater_than() {
+        let mut t = make_table(3, 1);
+        t.set_cell_source(0, 0, "10".to_string());
+        t.set_cell_source(0, 1, "50".to_string());
+        t.set_cell_source(0, 2, "30".to_string());
+        recalculate_table(&mut t);
+
+        t.cond_formats.push(ConditionalRule {
+            col: 0,
+            condition: ConditionalOp::GreaterThan,
+            threshold: 25.0,
+            bg_color: Some("#00ff00".to_string()),
+            fg_color: None,
+        });
+
+        assert_eq!(t.cond_format_style(0, 0), (None, None)); // 10 <= 25
+        assert_eq!(t.cond_format_style(0, 1), (Some("#00ff00"), None)); // 50 > 25
+        assert_eq!(t.cond_format_style(0, 2), (Some("#00ff00"), None)); // 30 > 25
+    }
+
+    #[test]
+    fn test_cond_format_less_than() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "5".to_string());
+        t.set_cell_source(0, 1, "15".to_string());
+        recalculate_table(&mut t);
+
+        t.cond_formats.push(ConditionalRule {
+            col: 0,
+            condition: ConditionalOp::LessThan,
+            threshold: 10.0,
+            bg_color: Some("#ff0000".to_string()),
+            fg_color: Some("#ffffff".to_string()),
+        });
+
+        assert_eq!(
+            t.cond_format_style(0, 0),
+            (Some("#ff0000"), Some("#ffffff"))
+        ); // 5 < 10
+        assert_eq!(t.cond_format_style(0, 1), (None, None)); // 15 >= 10
+    }
+
+    #[test]
+    fn test_cond_format_first_match_wins() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "50".to_string());
+        recalculate_table(&mut t);
+
+        t.cond_formats.push(ConditionalRule {
+            col: 0,
+            condition: ConditionalOp::GreaterThan,
+            threshold: 40.0,
+            bg_color: Some("#00ff00".to_string()),
+            fg_color: None,
+        });
+        t.cond_formats.push(ConditionalRule {
+            col: 0,
+            condition: ConditionalOp::GreaterThan,
+            threshold: 30.0,
+            bg_color: Some("#ffff00".to_string()),
+            fg_color: None,
+        });
+
+        // First rule matches, second is ignored
+        assert_eq!(t.cond_format_style(0, 0), (Some("#00ff00"), None));
+    }
+
+    #[test]
+    fn test_cond_format_text_cell_ignored() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "hello".to_string());
+        recalculate_table(&mut t);
+
+        t.cond_formats.push(ConditionalRule {
+            col: 0,
+            condition: ConditionalOp::GreaterThan,
+            threshold: 0.0,
+            bg_color: Some("#00ff00".to_string()),
+            fg_color: None,
+        });
+
+        assert_eq!(t.cond_format_style(0, 0), (None, None)); // text, not numeric
+    }
+
+    #[test]
+    fn test_cond_format_wrong_column() {
+        let mut t = make_table(1, 2);
+        t.set_cell_source(0, 0, "50".to_string());
+        t.set_cell_source(1, 0, "50".to_string());
+        recalculate_table(&mut t);
+
+        t.cond_formats.push(ConditionalRule {
+            col: 1, // rule only applies to col 1
+            condition: ConditionalOp::GreaterThan,
+            threshold: 0.0,
+            bg_color: Some("#00ff00".to_string()),
+            fg_color: None,
+        });
+
+        assert_eq!(t.cond_format_style(0, 0), (None, None)); // wrong column
+        assert_eq!(t.cond_format_style(1, 0), (Some("#00ff00"), None)); // right column
     }
 }

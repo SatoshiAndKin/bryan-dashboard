@@ -13,7 +13,7 @@ use crate::formula::graph::{recalculate_table, recalculate_table_with_ctx};
 use crate::model::cell::{col_index_to_label, NumberFormat, TextAlign};
 use crate::model::settings::AppSettings;
 use crate::model::sheet::SheetId;
-use crate::model::table::{TableId, TableModel};
+use crate::model::table::{ConditionalOp, ConditionalRule, TableId, TableModel};
 #[cfg(target_arch = "wasm32")]
 use crate::persistence::{export_workbook, import_workbook};
 use crate::persistence::{load_settings, load_workbook, save_settings, save_workbook};
@@ -1060,6 +1060,71 @@ pub fn WorkbookShell() -> Element {
                             }
                         },
                         "Z\u{2193}A"
+                    }
+                }
+
+                // Conditional formatting (quick rules for selected column)
+                if sel_info.is_some() {
+                    span { class: "toolbar-separator" }
+                    button {
+                        class: "toolbar-btn",
+                        title: "Highlight cells > value (green)",
+                        onclick: move |_| {
+                            if let Some((tid, col, _row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        table.cond_formats.push(ConditionalRule {
+                                            col,
+                                            condition: ConditionalOp::GreaterThan,
+                                            threshold: 0.0,
+                                            bg_color: Some("#1a3a1a".to_string()),
+                                            fg_color: Some("#4caf50".to_string()),
+                                        });
+                                    }
+                                }
+                                save(&wb);
+                            }
+                        },
+                        ">0 \u{1f7e2}"
+                    }
+                    button {
+                        class: "toolbar-btn",
+                        title: "Highlight cells < 0 (red)",
+                        onclick: move |_| {
+                            if let Some((tid, col, _row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        table.cond_formats.push(ConditionalRule {
+                                            col,
+                                            condition: ConditionalOp::LessThan,
+                                            threshold: 0.0,
+                                            bg_color: Some("#3a1a1a".to_string()),
+                                            fg_color: Some("#f44336".to_string()),
+                                        });
+                                    }
+                                }
+                                save(&wb);
+                            }
+                        },
+                        "<0 \u{1f534}"
+                    }
+                    button {
+                        class: "toolbar-btn",
+                        title: "Clear conditional formatting for this column",
+                        onclick: move |_| {
+                            if let Some((tid, col, _row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        table.cond_formats.retain(|r| r.col != col);
+                                    }
+                                }
+                                save(&wb);
+                            }
+                        },
+                        "\u{2716}CF"
                     }
                 }
 

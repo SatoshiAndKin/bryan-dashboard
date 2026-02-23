@@ -174,9 +174,16 @@ pub fn SheetView(
                                     let has_content = cell
                                         .map(|c| !c.source.is_empty())
                                         .unwrap_or(false);
-                                    let cell_style = cell
-                                        .map(|c| c.format.css_style())
+                                    let mut cell_style = cell
+                                        .map(|c_model| c_model.format.css_style())
                                         .unwrap_or_default();
+                                    let (cond_bg, cond_fg) = table.cond_format_style(c, r);
+                                    if let Some(bg) = cond_bg {
+                                        cell_style.push_str(&format!("background-color:{};", bg));
+                                    }
+                                    if let Some(fg) = cond_fg {
+                                        cell_style.push_str(&format!("color:{};", fg));
+                                    }
                                     let width = table.col_width(c);
                                     let height = table.row_height(r);
 
