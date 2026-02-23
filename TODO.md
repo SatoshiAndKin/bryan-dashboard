@@ -165,3 +165,19 @@ Clippy must be run with `--all-targets` to catch issues in both the main binary 
 - [x] accessibility: ARIA labels on grid cells, screen reader nav, high-contrast mode
 
 - [x] git commit
+
+- [x] string literals in formulas ("hello" syntax, & concatenation, comparison operators)
+
+- [x] 25 new formula functions: IF, MIN, MAX, COUNT, COUNTA, ROUND, ABS, FLOOR, CEIL, MOD, POWER, SQRT, LN, LOG, CONCATENATE, LEFT, RIGHT, MID, LEN, UPPER, LOWER, TRIM, TEXT, VALUE
+
+- [x] sorting/filtering: sort_by_column (asc/desc), filter_rows by predicate, toolbar sort buttons
+
+- [x] multi-cell copy/paste: cross-table support, auto-expand, rectangular block paste
+
+- [x] undo for structural changes: add/delete row/col, sort all undoable with Ctrl+Z/Y
+
+- [x] drag-to-resize columns and rows via header edge handles
+
+- [x] conditional formatting: per-column rules (GT/LT/GE/LE/EQ/NE), toolbar quick-add, clear per column
+
+- [x] git commit

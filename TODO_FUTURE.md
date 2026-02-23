@@ -35,10 +35,16 @@
 
 - [ ] high-contrast mode toggle in settings — swap the dark theme for a high-contrast black/white/yellow scheme for accessibility
 
-- [ ] multi-cell copy/paste — copy a selected range of cells and paste them as a block (currently only single-cell copy/paste works)
+- [x] multi-cell copy/paste — copy a selected range of cells and paste them as a block, with cross-table support and auto-expand
 
 - [ ] cell formatting persistence in formulas — number format should be auto-detected from formula context (e.g., ETH_BALANCE result auto-formats as currency)
 
-- [ ] conditional formatting rules — highlight cells based on value thresholds (e.g., red if negative, green if > 100)
+- [x] conditional formatting rules — highlight cells based on value thresholds (e.g., red if negative, green if > 100). Per-column rules with GT/LT/GE/LE/EQ/NE operators.
 
-- [ ] column/row resize by dragging header borders — currently col_widths/row_heights exist but there's no drag-to-resize UI
+- [x] column/row resize by dragging header borders — drag handles on column and row headers
+
+- [ ] Find & Replace — Ctrl+F to search across all cells in the active sheet, with replace support for source strings
+
+- [ ] Cell Merging — merge multiple selected cells into one, unmerge to restore. Needs model support for merged cell ranges and rendering adjustments.
+
+- [ ] Charts — embed simple charts (bar, line, pie) from table data ranges. Could use a lightweight charting library compiled to WASM or SVG-based rendering.
