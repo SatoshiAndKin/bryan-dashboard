@@ -9,6 +9,24 @@ use crate::formula::rewrite::{
 
 pub type TableId = u64;
 
+/// Compare two CellValues for sorting: Number < Text < Empty < Error
+fn cmp_cell_values(a: &super::cell::CellValue, b: &super::cell::CellValue) -> std::cmp::Ordering {
+    use super::cell::CellValue;
+    use std::cmp::Ordering;
+    match (a, b) {
+        (CellValue::Number(x), CellValue::Number(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
+        (CellValue::Number(_), _) => Ordering::Less,
+        (_, CellValue::Number(_)) => Ordering::Greater,
+        (CellValue::Text(x), CellValue::Text(y)) => x.cmp(y),
+        (CellValue::Text(_), _) => Ordering::Less,
+        (_, CellValue::Text(_)) => Ordering::Greater,
+        (CellValue::Empty, CellValue::Empty) => Ordering::Equal,
+        (CellValue::Empty, _) => Ordering::Less,
+        (_, CellValue::Empty) => Ordering::Greater,
+        (CellValue::Error(x), CellValue::Error(y)) => x.cmp(y),
+    }
+}
+
 fn default_one() -> u32 {
     1
 }
@@ -412,6 +430,186 @@ impl TableModel {
         self.set_cell_source(to.0, to.1, new_source);
     }
 
+    /// Sort data rows (between headers and footers) by values in `sort_col`.
+    /// If `ascending` is true, sorts smallest→largest; otherwise largest→smallest.
+    /// Empty cells sort to the bottom. Errors sort after empty.
+    pub fn sort_by_column(&mut self, sort_col: u32, ascending: bool) {
+        let first_data = self.header_rows;
+        let last_data = self.rows.saturating_sub(self.footer_rows);
+        if last_data <= first_data + 1 {
+            return; // 0 or 1 data rows, nothing to sort
+        }
+        let data_rows: Vec<u32> = (first_data..last_data).collect();
+
+        // Build sort keys from computed values
+        let mut indexed: Vec<(u32, &super::cell::CellValue)> = data_rows
+            .iter()
+            .map(|&r| {
+                let val = self
+                    .cells
+                    .get(&(sort_col, r))
+                    .map(|c| &c.computed)
+                    .unwrap_or(&super::cell::CellValue::Empty);
+                (r, val)
+            })
+            .collect();
+
+        indexed.sort_by(|a, b| {
+            let ord = cmp_cell_values(a.1, b.1);
+            if ascending {
+                ord
+            } else {
+                ord.reverse()
+            }
+        });
+
+        let new_order: Vec<u32> = indexed.iter().map(|(r, _)| *r).collect();
+
+        // Build new cells and row metadata in sorted order
+        let mut new_cells: HashMap<(u32, u32), CellModel> = HashMap::new();
+        let mut new_row_heights: HashMap<u32, f32> = HashMap::new();
+        let mut new_row_names: HashMap<u32, String> = HashMap::new();
+
+        // Copy non-data rows as-is (headers + footers)
+        for (&(c, r), cell) in &self.cells {
+            if r < first_data || r >= last_data {
+                new_cells.insert((c, r), cell.clone());
+            }
+        }
+        for (&r, &h) in &self.row_heights {
+            if r < first_data || r >= last_data {
+                new_row_heights.insert(r, h);
+            }
+        }
+        for (&r, name) in &self.row_names {
+            if r < first_data || r >= last_data {
+                new_row_names.insert(r, name.clone());
+            }
+        }
+
+        // Map data rows to their new positions
+        for (dest_idx, &src_row) in new_order.iter().enumerate() {
+            let dest_row = first_data + dest_idx as u32;
+            // Copy all columns for this row
+            for col in 0..self.cols {
+                if let Some(cell) = self.cells.get(&(col, src_row)) {
+                    new_cells.insert((col, dest_row), cell.clone());
+                }
+            }
+            if let Some(&h) = self.row_heights.get(&src_row) {
+                new_row_heights.insert(dest_row, h);
+            }
+            if let Some(name) = self.row_names.get(&src_row) {
+                new_row_names.insert(dest_row, name.clone());
+            }
+        }
+
+        self.cells = new_cells;
+        self.row_heights = new_row_heights;
+        self.row_names = new_row_names;
+    }
+
+    /// Filter data rows: keep only rows where `predicate(computed_value_in_filter_col)` returns true.
+    /// Hidden rows are removed and remaining rows are compacted. Returns the number of rows removed.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub fn filter_rows<F>(&mut self, filter_col: u32, predicate: F) -> u32
+    where
+        F: Fn(&super::cell::CellValue) -> bool,
+    {
+        let first_data = self.header_rows;
+        let last_data = self.rows.saturating_sub(self.footer_rows);
+        if last_data <= first_data {
+            return 0;
+        }
+
+        // Determine which data rows to keep
+        let mut keep_rows: Vec<u32> = Vec::new();
+        let mut removed = 0u32;
+        for r in first_data..last_data {
+            let val = self
+                .cells
+                .get(&(filter_col, r))
+                .map(|c| &c.computed)
+                .unwrap_or(&super::cell::CellValue::Empty);
+            if predicate(val) {
+                keep_rows.push(r);
+            } else {
+                removed += 1;
+            }
+        }
+
+        if removed == 0 {
+            return 0;
+        }
+
+        // Build new cells, compacting kept rows
+        let mut new_cells: HashMap<(u32, u32), CellModel> = HashMap::new();
+        let mut new_row_heights: HashMap<u32, f32> = HashMap::new();
+        let mut new_row_names: HashMap<u32, String> = HashMap::new();
+
+        // Copy header rows
+        for (&(c, r), cell) in &self.cells {
+            if r < first_data {
+                new_cells.insert((c, r), cell.clone());
+            }
+        }
+        for (&r, &h) in &self.row_heights {
+            if r < first_data {
+                new_row_heights.insert(r, h);
+            }
+        }
+        for (&r, name) in &self.row_names {
+            if r < first_data {
+                new_row_names.insert(r, name.clone());
+            }
+        }
+
+        // Map kept data rows to compacted positions
+        for (dest_idx, &src_row) in keep_rows.iter().enumerate() {
+            let dest_row = first_data + dest_idx as u32;
+            for col in 0..self.cols {
+                if let Some(cell) = self.cells.get(&(col, src_row)) {
+                    new_cells.insert((col, dest_row), cell.clone());
+                }
+            }
+            if let Some(&h) = self.row_heights.get(&src_row) {
+                new_row_heights.insert(dest_row, h);
+            }
+            if let Some(name) = self.row_names.get(&src_row) {
+                new_row_names.insert(dest_row, name.clone());
+            }
+        }
+
+        // Copy footer rows (shifted up by removed count)
+        let old_footer_start = last_data;
+        let new_footer_start = first_data + keep_rows.len() as u32;
+        for (&(c, r), cell) in &self.cells {
+            if r >= old_footer_start && r < self.rows {
+                let new_r = new_footer_start + (r - old_footer_start);
+                new_cells.insert((c, new_r), cell.clone());
+            }
+        }
+        for (&r, &h) in &self.row_heights {
+            if r >= old_footer_start && r < self.rows {
+                let new_r = new_footer_start + (r - old_footer_start);
+                new_row_heights.insert(new_r, h);
+            }
+        }
+        for (&r, name) in &self.row_names {
+            if r >= old_footer_start && r < self.rows {
+                let new_r = new_footer_start + (r - old_footer_start);
+                new_row_names.insert(new_r, name.clone());
+            }
+        }
+
+        self.cells = new_cells;
+        self.row_heights = new_row_heights;
+        self.row_names = new_row_names;
+        self.rows -= removed;
+
+        removed
+    }
+
     pub fn cell_ref_value(&self, cell_ref: &CellRef) -> &CellModel {
         static DEFAULT: CellModel = CellModel {
             source: String::new(),
@@ -435,6 +633,7 @@ impl TableModel {
 mod tests {
     use super::*;
     use crate::formula::graph::recalculate_table;
+    use crate::model::cell::CellValue;
 
     fn make_table(rows: u32, cols: u32) -> TableModel {
         TableModel::new(1, "T".to_string(), rows, cols)
@@ -969,5 +1168,165 @@ mod tests {
         t.set_cell_source(0, 2, "Banana".to_string());
         // B2 = "Price" col, "Apple" row -> should prettify
         assert_eq!(t.prettify_formula("=B2"), "=Price.Apple");
+    }
+
+    // --- Sort tests ---
+
+    fn make_sort_table() -> TableModel {
+        // 1 header row + 4 data rows, 2 cols
+        let mut t = make_table(5, 2);
+        t.header_rows = 1;
+        t.set_cell_source(0, 0, "Name".to_string());
+        t.set_cell_source(1, 0, "Score".to_string());
+        // Data rows (col 0 = name, col 1 = score)
+        t.set_cell_source(0, 1, "Charlie".to_string());
+        t.set_cell_source(1, 1, "30".to_string());
+        t.set_cell_source(0, 2, "Alice".to_string());
+        t.set_cell_source(1, 2, "50".to_string());
+        t.set_cell_source(0, 3, "Bob".to_string());
+        t.set_cell_source(1, 3, "10".to_string());
+        t.set_cell_source(0, 4, "Diana".to_string());
+        t.set_cell_source(1, 4, "40".to_string());
+        recalculate_table(&mut t);
+        t
+    }
+
+    #[test]
+    fn test_sort_ascending_numeric() {
+        let mut t = make_sort_table();
+        t.sort_by_column(1, true); // sort by Score ascending
+                                   // Should be: Bob(10), Charlie(30), Diana(40), Alice(50)
+        assert_eq!(
+            t.cells[&(0, 1)].computed,
+            CellValue::Text("Bob".to_string())
+        );
+        assert_eq!(t.cells[&(1, 1)].computed, CellValue::Number(10.0));
+        assert_eq!(
+            t.cells[&(0, 2)].computed,
+            CellValue::Text("Charlie".to_string())
+        );
+        assert_eq!(
+            t.cells[&(0, 3)].computed,
+            CellValue::Text("Diana".to_string())
+        );
+        assert_eq!(
+            t.cells[&(0, 4)].computed,
+            CellValue::Text("Alice".to_string())
+        );
+    }
+
+    #[test]
+    fn test_sort_descending_numeric() {
+        let mut t = make_sort_table();
+        t.sort_by_column(1, false); // sort by Score descending
+                                    // Should be: Alice(50), Diana(40), Charlie(30), Bob(10)
+        assert_eq!(
+            t.cells[&(0, 1)].computed,
+            CellValue::Text("Alice".to_string())
+        );
+        assert_eq!(
+            t.cells[&(0, 4)].computed,
+            CellValue::Text("Bob".to_string())
+        );
+    }
+
+    #[test]
+    fn test_sort_alphabetic() {
+        let mut t = make_sort_table();
+        t.sort_by_column(0, true); // sort by Name ascending
+                                   // Should be: Alice, Bob, Charlie, Diana
+        assert_eq!(
+            t.cells[&(0, 1)].computed,
+            CellValue::Text("Alice".to_string())
+        );
+        assert_eq!(
+            t.cells[&(0, 2)].computed,
+            CellValue::Text("Bob".to_string())
+        );
+        assert_eq!(
+            t.cells[&(0, 3)].computed,
+            CellValue::Text("Charlie".to_string())
+        );
+        assert_eq!(
+            t.cells[&(0, 4)].computed,
+            CellValue::Text("Diana".to_string())
+        );
+    }
+
+    #[test]
+    fn test_sort_preserves_headers() {
+        let mut t = make_sort_table();
+        t.sort_by_column(1, true);
+        // Header row should be unchanged
+        assert_eq!(
+            t.cells[&(0, 0)].computed,
+            CellValue::Text("Name".to_string())
+        );
+        assert_eq!(
+            t.cells[&(1, 0)].computed,
+            CellValue::Text("Score".to_string())
+        );
+    }
+
+    #[test]
+    fn test_sort_with_empty_cells() {
+        let mut t = make_table(5, 1);
+        t.header_rows = 1;
+        t.set_cell_source(0, 0, "Val".to_string());
+        t.set_cell_source(0, 1, "30".to_string());
+        // row 2 empty
+        t.set_cell_source(0, 3, "10".to_string());
+        t.set_cell_source(0, 4, "20".to_string());
+        recalculate_table(&mut t);
+        t.sort_by_column(0, true);
+        // Numbers first (10, 20, 30), then empty at bottom
+        assert_eq!(t.cells[&(0, 1)].computed, CellValue::Number(10.0));
+        assert_eq!(t.cells[&(0, 2)].computed, CellValue::Number(20.0));
+        assert_eq!(t.cells[&(0, 3)].computed, CellValue::Number(30.0));
+    }
+
+    // --- Filter tests ---
+
+    #[test]
+    fn test_filter_by_value() {
+        let mut t = make_sort_table();
+        let removed = t.filter_rows(1, |v| {
+            if let CellValue::Number(n) = v {
+                *n >= 30.0
+            } else {
+                false
+            }
+        });
+        assert_eq!(removed, 1); // Bob(10) removed
+        assert_eq!(t.rows, 4); // was 5, now 4
+                               // Remaining data: Charlie(30), Alice(50), Diana(40) — original order preserved
+        assert_eq!(
+            t.cells[&(0, 1)].computed,
+            CellValue::Text("Charlie".to_string())
+        );
+        assert_eq!(
+            t.cells[&(0, 2)].computed,
+            CellValue::Text("Alice".to_string())
+        );
+        assert_eq!(
+            t.cells[&(0, 3)].computed,
+            CellValue::Text("Diana".to_string())
+        );
+    }
+
+    #[test]
+    fn test_filter_removes_nothing() {
+        let mut t = make_sort_table();
+        let removed = t.filter_rows(1, |_| true);
+        assert_eq!(removed, 0);
+        assert_eq!(t.rows, 5);
+    }
+
+    #[test]
+    fn test_filter_removes_all_data() {
+        let mut t = make_sort_table();
+        let removed = t.filter_rows(1, |_| false);
+        assert_eq!(removed, 4);
+        assert_eq!(t.rows, 1); // only header row
     }
 }

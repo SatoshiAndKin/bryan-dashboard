@@ -920,6 +920,43 @@ pub fn WorkbookShell() -> Element {
                     }
                 }
 
+                // Sort buttons (when a cell is selected in a table with headers)
+                if sel_info.is_some() && active_table_info.map(|(_, hr, _, _)| hr > 0).unwrap_or(false) {
+                    span { class: "toolbar-separator" }
+                    button {
+                        class: "toolbar-btn",
+                        title: "Sort column ascending",
+                        onclick: move |_| {
+                            if let Some((tid, col, _row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        table.sort_by_column(col, true);
+                                    }
+                                }
+                                save(&wb);
+                            }
+                        },
+                        "A\u{2191}Z"
+                    }
+                    button {
+                        class: "toolbar-btn",
+                        title: "Sort column descending",
+                        onclick: move |_| {
+                            if let Some((tid, col, _row)) = selected {
+                                let mut wb = workbook.write();
+                                if let Some(sheet) = wb.active_sheet_mut() {
+                                    if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        table.sort_by_column(col, false);
+                                    }
+                                }
+                                save(&wb);
+                            }
+                        },
+                        "Z\u{2193}A"
+                    }
+                }
+
                 // Cell formatting controls
                 if sel_info.is_some() {
                     span { class: "toolbar-separator" }
