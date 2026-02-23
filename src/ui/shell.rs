@@ -13,7 +13,7 @@ use crate::formula::graph::{recalculate_table, recalculate_table_with_ctx};
 use crate::model::cell::{col_index_to_label, NumberFormat, TextAlign};
 use crate::model::settings::AppSettings;
 use crate::model::sheet::SheetId;
-use crate::model::table::TableId;
+use crate::model::table::{TableId, TableModel};
 #[cfg(target_arch = "wasm32")]
 use crate::persistence::{export_workbook, import_workbook};
 use crate::persistence::{load_settings, load_workbook, save_settings, save_workbook};
@@ -123,12 +123,20 @@ pub enum PendingDelete {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct UndoEntry {
-    pub table_id: TableId,
-    pub col: u32,
-    pub row: u32,
-    pub old_source: String,
-    pub new_source: String,
+pub enum UndoEntry {
+    CellEdit {
+        table_id: TableId,
+        col: u32,
+        row: u32,
+        old_source: String,
+        new_source: String,
+    },
+    /// Snapshot of entire table before a structural change (add/delete row/col, sort, etc.)
+    TableSnapshot {
+        table_id: TableId,
+        before: Box<TableModel>,
+        after: Box<TableModel>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -546,11 +554,22 @@ pub fn WorkbookShell() -> Element {
                     if let Some(entry) = entry {
                         let mut wb = workbook.write();
                         if let Some(sheet) = wb.active_sheet_mut() {
-                            if let Some(table) = sheet.table_by_id_mut(entry.table_id) {
-                                table.set_cell_source(entry.col, entry.row, entry.old_source.clone());
-                                recalculate_table(table);
+                            match &entry {
+                                UndoEntry::CellEdit { table_id, col, row, old_source, .. } => {
+                                    if let Some(table) = sheet.table_by_id_mut(*table_id) {
+                                        table.set_cell_source(*col, *row, old_source.clone());
+                                        recalculate_table(table);
+                                    }
+                                    sheet.recalculate_dependents(*table_id);
+                                }
+                                UndoEntry::TableSnapshot { table_id, before, .. } => {
+                                    if let Some(table) = sheet.table_by_id_mut(*table_id) {
+                                        *table = *before.clone();
+                                        recalculate_table(table);
+                                    }
+                                    sheet.recalculate_dependents(*table_id);
+                                }
                             }
-                            sheet.recalculate_dependents(entry.table_id);
                         }
                         save(&wb);
                         ui.write().redo_stack.push(entry);
@@ -566,11 +585,22 @@ pub fn WorkbookShell() -> Element {
                     if let Some(entry) = entry {
                         let mut wb = workbook.write();
                         if let Some(sheet) = wb.active_sheet_mut() {
-                            if let Some(table) = sheet.table_by_id_mut(entry.table_id) {
-                                table.set_cell_source(entry.col, entry.row, entry.new_source.clone());
-                                recalculate_table(table);
+                            match &entry {
+                                UndoEntry::CellEdit { table_id, col, row, new_source, .. } => {
+                                    if let Some(table) = sheet.table_by_id_mut(*table_id) {
+                                        table.set_cell_source(*col, *row, new_source.clone());
+                                        recalculate_table(table);
+                                    }
+                                    sheet.recalculate_dependents(*table_id);
+                                }
+                                UndoEntry::TableSnapshot { table_id, after, .. } => {
+                                    if let Some(table) = sheet.table_by_id_mut(*table_id) {
+                                        *table = *after.clone();
+                                        recalculate_table(table);
+                                    }
+                                    sheet.recalculate_dependents(*table_id);
+                                }
                             }
-                            sheet.recalculate_dependents(entry.table_id);
                         }
                         save(&wb);
                         ui.write().undo_stack.push(entry);
@@ -614,7 +644,7 @@ pub fn WorkbookShell() -> Element {
                             u.editing = None;
                             u.editing_sheet_id = None;
                             if old_source != new_source {
-                                u.undo_stack.push(UndoEntry {
+                                u.undo_stack.push(UndoEntry::CellEdit {
                                     table_id: etid, col, row,
                                     old_source, new_source,
                                 });
@@ -841,7 +871,14 @@ pub fn WorkbookShell() -> Element {
                         if let Some(sheet) = wb.active_sheet_mut() {
                             let atid = sheet.active_table_id;
                             if let Some(t) = sheet.active_table_mut() {
+                                let before = t.clone();
                                 t.add_row();
+                                let after = t.clone();
+                                let mut u = ui.write();
+                                u.undo_stack.push(UndoEntry::TableSnapshot {
+                                    table_id: atid, before: Box::new(before), after: Box::new(after),
+                                });
+                                u.redo_stack.clear();
                             }
                             snap_no_overlap(sheet, atid);
                         }
@@ -856,7 +893,14 @@ pub fn WorkbookShell() -> Element {
                         if let Some(sheet) = wb.active_sheet_mut() {
                             let atid = sheet.active_table_id;
                             if let Some(t) = sheet.active_table_mut() {
+                                let before = t.clone();
                                 t.add_col();
+                                let after = t.clone();
+                                let mut u = ui.write();
+                                u.undo_stack.push(UndoEntry::TableSnapshot {
+                                    table_id: atid, before: Box::new(before), after: Box::new(after),
+                                });
+                                u.redo_stack.clear();
                             }
                             snap_no_overlap(sheet, atid);
                         }
@@ -979,7 +1023,14 @@ pub fn WorkbookShell() -> Element {
                                 let mut wb = workbook.write();
                                 if let Some(sheet) = wb.active_sheet_mut() {
                                     if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        let before = table.clone();
                                         table.sort_by_column(col, true);
+                                        let after = table.clone();
+                                        let mut u = ui.write();
+                                        u.undo_stack.push(UndoEntry::TableSnapshot {
+                                            table_id: tid, before: Box::new(before), after: Box::new(after),
+                                        });
+                                        u.redo_stack.clear();
                                     }
                                 }
                                 save(&wb);
@@ -995,7 +1046,14 @@ pub fn WorkbookShell() -> Element {
                                 let mut wb = workbook.write();
                                 if let Some(sheet) = wb.active_sheet_mut() {
                                     if let Some(table) = sheet.table_by_id_mut(tid) {
+                                        let before = table.clone();
                                         table.sort_by_column(col, false);
+                                        let after = table.clone();
+                                        let mut u = ui.write();
+                                        u.undo_stack.push(UndoEntry::TableSnapshot {
+                                            table_id: tid, before: Box::new(before), after: Box::new(after),
+                                        });
+                                        u.redo_stack.clear();
                                     }
                                 }
                                 save(&wb);
@@ -1517,7 +1575,7 @@ pub fn WorkbookShell() -> Element {
                                                     u.selected = Some((etid, col, (row + 1).min(max_row - 1)));
                                                     // Record undo
                                                     if old_source != new_source {
-                                                        u.undo_stack.push(UndoEntry {
+                                                        u.undo_stack.push(UndoEntry::CellEdit {
                                                             table_id: etid, col, row,
                                                             old_source, new_source,
                                                         });
@@ -1677,11 +1735,17 @@ pub fn WorkbookShell() -> Element {
                                         let mut wb = workbook.write();
                                         if let Some(sheet) = wb.active_sheet_mut() {
                                             if let Some(table) = sheet.table_by_id_mut(tid) {
-                                                // Delete from bottom to top so indices stay valid
+                                                let before = table.clone();
                                                 for r in (*min_row..=*max_row).rev() {
                                                     table.delete_row(r);
                                                 }
                                                 recalculate_table(table);
+                                                let after = table.clone();
+                                                let mut u = ui.write();
+                                                u.undo_stack.push(UndoEntry::TableSnapshot {
+                                                    table_id: tid, before: Box::new(before), after: Box::new(after),
+                                                });
+                                                u.redo_stack.clear();
                                             }
                                             sheet.recalculate_dependents(tid);
                                         }
@@ -1698,11 +1762,17 @@ pub fn WorkbookShell() -> Element {
                                         let mut wb = workbook.write();
                                         if let Some(sheet) = wb.active_sheet_mut() {
                                             if let Some(table) = sheet.table_by_id_mut(tid) {
-                                                // Delete from right to left so indices stay valid
+                                                let before = table.clone();
                                                 for c in (*min_col..=*max_col).rev() {
                                                     table.delete_col(c);
                                                 }
                                                 recalculate_table(table);
+                                                let after = table.clone();
+                                                let mut u = ui.write();
+                                                u.undo_stack.push(UndoEntry::TableSnapshot {
+                                                    table_id: tid, before: Box::new(before), after: Box::new(after),
+                                                });
+                                                u.redo_stack.clear();
                                             }
                                             sheet.recalculate_dependents(tid);
                                         }
