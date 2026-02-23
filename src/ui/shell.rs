@@ -449,10 +449,20 @@ pub fn WorkbookShell() -> Element {
                         (u.clipboard, u.selected)
                     };
                     if let (Some((src_tid, sc0, sr0, sc1, sr1)), Some((dst_tid, dc, dr))) = (clipboard, selected) {
-                        if src_tid == dst_tid {
-                            let mut wb = workbook.write();
-                            if let Some(sheet) = wb.active_sheet_mut() {
+                        let mut wb = workbook.write();
+                        if let Some(sheet) = wb.active_sheet_mut() {
+                            let block_w = sc1 - sc0 + 1;
+                            let block_h = sr1 - sr0 + 1;
+
+                            if src_tid == dst_tid {
+                                // Same-table paste: use copy_cell (shifts formula refs)
                                 if let Some(table) = sheet.table_by_id_mut(src_tid) {
+                                    // Auto-expand table if needed
+                                    let need_cols = dc + block_w;
+                                    let need_rows = dr + block_h;
+                                    if need_cols > table.cols { table.cols = need_cols; }
+                                    if need_rows > table.rows { table.rows = need_rows; }
+
                                     for col in sc0..=sc1 {
                                         for row in sr0..=sr1 {
                                             let dst_col = dc + (col - sc0);
@@ -465,9 +475,47 @@ pub fn WorkbookShell() -> Element {
                                     recalculate_table(table);
                                 }
                                 sheet.recalculate_dependents(src_tid);
+                            } else {
+                                // Cross-table paste: copy computed values
+                                let sources: Vec<(u32, u32, String)> = {
+                                    if let Some(src_table) = sheet.table_by_id(src_tid) {
+                                        let mut vals = Vec::new();
+                                        for col in sc0..=sc1 {
+                                            for row in sr0..=sr1 {
+                                                let source = src_table
+                                                    .cells
+                                                    .get(&(col, row))
+                                                    .map(|c| {
+                                                        if c.source.starts_with('=') {
+                                                            c.computed.to_string()
+                                                        } else {
+                                                            c.source.clone()
+                                                        }
+                                                    })
+                                                    .unwrap_or_default();
+                                                vals.push((col - sc0, row - sr0, source));
+                                            }
+                                        }
+                                        vals
+                                    } else {
+                                        Vec::new()
+                                    }
+                                };
+                                if let Some(dst_table) = sheet.table_by_id_mut(dst_tid) {
+                                    let need_cols = dc + block_w;
+                                    let need_rows = dr + block_h;
+                                    if need_cols > dst_table.cols { dst_table.cols = need_cols; }
+                                    if need_rows > dst_table.rows { dst_table.rows = need_rows; }
+
+                                    for (dc_off, dr_off, source) in &sources {
+                                        dst_table.set_cell_source(dc + dc_off, dr + dr_off, source.clone());
+                                    }
+                                    recalculate_table(dst_table);
+                                }
+                                sheet.recalculate_dependents(dst_tid);
                             }
-                            save(&wb);
                         }
+                        save(&wb);
                     }
                     return;
                 }
