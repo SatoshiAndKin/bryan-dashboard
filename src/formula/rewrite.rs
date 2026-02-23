@@ -395,4 +395,59 @@ mod tests {
         // Shifting A1 by -5 columns should clamp to column 0 (A)
         assert_eq!(shift_refs_in_source("=A1", -5, 0), "=A1");
     }
+
+    #[test]
+    fn test_shift_row_refs_pinned_row_deleted() {
+        // $A$2 has pinned row; deleting row 1 (0-indexed) should still produce #REF!
+        assert_eq!(shift_row_refs("=$A$2", 1), "=#REF!");
+    }
+
+    #[test]
+    fn test_shift_col_refs_pinned_col_deleted() {
+        // $B1 has pinned col B (col 1); deleting col 1 should still produce #REF!
+        assert_eq!(shift_col_refs("=$B1", 1), "=#REF!");
+    }
+
+    #[test]
+    fn test_shift_row_refs_range_formula() {
+        // =SUM(A1:A5), delete row 2 (0-indexed row 1)
+        // A1 stays, A5 (row 4) becomes A4
+        assert_eq!(shift_row_refs("=SUM(A1:A5)", 1), "=SUM(A1:A4)");
+    }
+
+    #[test]
+    fn test_shift_col_refs_range_formula() {
+        // =SUM(A1:E1), delete col B (col 1)
+        // A stays, E (col 4) becomes D (col 3)
+        assert_eq!(shift_col_refs("=SUM(A1:E1)", 1), "=SUM(A1:D1)");
+    }
+
+    #[test]
+    fn test_shift_row_refs_multiple_refs() {
+        // =A1+A3+A5, delete row 2 (0-indexed row 1)
+        // A1 stays, A3 (row 2) becomes A2, A5 (row 4) becomes A4
+        assert_eq!(shift_row_refs("=A1+A3+A5", 1), "=A1+A2+A4");
+    }
+
+    #[test]
+    fn test_shift_col_refs_multiple_refs() {
+        // =A1+C1+E1, delete col B (col 1)
+        // A1 stays, C1 (col 2) becomes B1, E1 (col 4) becomes D1
+        assert_eq!(shift_col_refs("=A1+C1+E1", 1), "=A1+B1+D1");
+    }
+
+    #[test]
+    fn test_rewrite_ref_multiple_matches() {
+        assert_eq!(rewrite_ref_in_source("=A1+A1+A1", "A1", "B2"), "=B2+B2+B2");
+    }
+
+    #[test]
+    fn test_rewrite_ref_no_match() {
+        assert_eq!(rewrite_ref_in_source("=B1+C2", "A1", "Z99"), "=B1+C2");
+    }
+
+    #[test]
+    fn test_shift_refs_large_negative_clamp() {
+        assert_eq!(shift_refs_in_source("=Z99", -100, -100), "=A1");
+    }
 }

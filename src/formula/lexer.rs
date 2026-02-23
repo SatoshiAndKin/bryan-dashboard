@@ -190,8 +190,8 @@ mod tests {
 
     #[test]
     fn test_decimal() {
-        let tokens = tokenize("3.14");
-        assert_eq!(tokens, vec![Token::Number(3.14), Token::Eof]);
+        let tokens = tokenize("2.5");
+        assert_eq!(tokens, vec![Token::Number(2.5), Token::Eof]);
     }
 
     #[test]

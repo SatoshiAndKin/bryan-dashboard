@@ -6,6 +6,7 @@ use wasm_bindgen_futures::JsFuture;
 
 /// EIP-6963 provider info (from eip6963:announceProvider events)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub struct WalletProviderInfo {
     pub uuid: String,
     pub name: String,
@@ -15,6 +16,7 @@ pub struct WalletProviderInfo {
 
 /// Discovered EIP-6963 provider: info + the JS provider object reference index
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub struct DiscoveredProvider {
     pub info: WalletProviderInfo,
     /// Index into the JS-side provider array (used to call back into JS)

@@ -452,7 +452,7 @@ mod tests {
         assert_eq!(t.cells[&(0, 0)].source, "A");
         assert_eq!(t.cells[&(0, 1)].source, "C");
         assert_eq!(t.cells[&(0, 2)].source, "D");
-        assert!(t.cells.get(&(0, 3)).is_none());
+        assert!(!t.cells.contains_key(&(0, 3)));
     }
 
     #[test]
@@ -742,5 +742,232 @@ mod tests {
         t.header_rows = 0;
         t.header_cols = 0;
         assert_eq!(t.prettify_formula("=A1+B2"), "=A1+B2");
+    }
+
+    // --- Multi-row/col delete tests (critical: recent bug-introducing features) ---
+
+    #[test]
+    fn test_delete_multiple_rows_bottom_to_top() {
+        let mut t = make_table(6, 2);
+        for r in 0..6 {
+            t.set_cell_source(0, r, format!("r{}", r));
+        }
+        // Delete rows 2, 3, 4 (bottom-to-top as shell.rs does)
+        for r in (2..=4).rev() {
+            t.delete_row(r);
+        }
+        assert_eq!(t.rows, 3);
+        assert_eq!(t.cells[&(0, 0)].source, "r0");
+        assert_eq!(t.cells[&(0, 1)].source, "r1");
+        assert_eq!(t.cells[&(0, 2)].source, "r5");
+    }
+
+    #[test]
+    fn test_delete_multiple_rows_with_formula_spanning_deleted_range() {
+        let mut t = make_table(6, 2);
+        t.set_cell_source(0, 0, "1".to_string());
+        t.set_cell_source(0, 1, "2".to_string());
+        t.set_cell_source(0, 2, "3".to_string());
+        t.set_cell_source(0, 3, "4".to_string());
+        t.set_cell_source(0, 4, "5".to_string());
+        t.set_cell_source(1, 5, "=SUM(A1:A5)".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(1, 5)].computed,
+            crate::model::cell::CellValue::Number(15.0)
+        );
+
+        // Delete rows 1 and 2 (values "2" and "3") bottom-to-top
+        t.delete_row(2);
+        t.delete_row(1);
+        recalculate_table(&mut t);
+
+        assert_eq!(t.rows, 4);
+        // After deleting row 2: A5 becomes A4, formula at row 4 becomes =SUM(A1:A4)
+        // After deleting row 1: A4 becomes A3, formula at row 3 becomes =SUM(A1:A3)
+        // Data: row0=1, row1=4, row2=5, row3 has =SUM(A1:A3) = 1+4+5 = 10
+        let formula_cell = &t.cells[&(1, 3)];
+        assert_eq!(formula_cell.source, "=SUM(A1:A3)");
+        assert_eq!(
+            formula_cell.computed,
+            crate::model::cell::CellValue::Number(10.0)
+        );
+    }
+
+    #[test]
+    fn test_delete_row_formula_refs_deleted_row_directly() {
+        let mut t = make_table(4, 2);
+        t.set_cell_source(0, 0, "10".to_string());
+        t.set_cell_source(0, 1, "20".to_string());
+        t.set_cell_source(0, 2, "30".to_string());
+        // Formula directly refs A2 (row 1)
+        t.set_cell_source(1, 3, "=A2".to_string());
+        recalculate_table(&mut t);
+        assert_eq!(
+            t.cells[&(1, 3)].computed,
+            crate::model::cell::CellValue::Number(20.0)
+        );
+
+        // Delete row 1 (value "20") -- the directly referenced row
+        t.delete_row(1);
+        recalculate_table(&mut t);
+
+        let formula_cell = &t.cells[&(1, 2)];
+        assert!(
+            formula_cell.source.contains("#REF!"),
+            "Direct ref to deleted row should become #REF!, got: {}",
+            formula_cell.source
+        );
+    }
+
+    #[test]
+    fn test_delete_multiple_cols_right_to_left() {
+        let mut t = make_table(2, 6);
+        for c in 0..6 {
+            t.set_cell_source(c, 0, format!("c{}", c));
+        }
+        // Delete cols 2, 3, 4 (right-to-left)
+        for c in (2..=4).rev() {
+            t.delete_col(c);
+        }
+        assert_eq!(t.cols, 3);
+        assert_eq!(t.cells[&(0, 0)].source, "c0");
+        assert_eq!(t.cells[&(1, 0)].source, "c1");
+        assert_eq!(t.cells[&(2, 0)].source, "c5");
+    }
+
+    #[test]
+    fn test_delete_row_single_row_table_noop() {
+        let mut t = make_table(1, 2);
+        t.set_cell_source(0, 0, "keep".to_string());
+        t.delete_row(0);
+        assert_eq!(t.rows, 1);
+        assert_eq!(t.cells[&(0, 0)].source, "keep");
+    }
+
+    #[test]
+    fn test_delete_col_single_col_table_noop() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(0, 0, "keep".to_string());
+        t.delete_col(0);
+        assert_eq!(t.cols, 1);
+        assert_eq!(t.cells[&(0, 0)].source, "keep");
+    }
+
+    #[test]
+    fn test_delete_row_shifts_row_heights() {
+        let mut t = make_table(4, 1);
+        t.row_heights.insert(0, 30.0);
+        t.row_heights.insert(2, 50.0);
+        t.row_heights.insert(3, 60.0);
+        t.delete_row(1);
+        assert_eq!(t.row_heights.get(&0), Some(&30.0));
+        assert_eq!(t.row_heights.get(&1), Some(&50.0)); // was row 2
+        assert_eq!(t.row_heights.get(&2), Some(&60.0)); // was row 3
+    }
+
+    #[test]
+    fn test_delete_col_shifts_col_widths() {
+        let mut t = make_table(1, 4);
+        t.col_widths.insert(0, 80.0);
+        t.col_widths.insert(2, 120.0);
+        t.col_widths.insert(3, 150.0);
+        t.delete_col(1);
+        assert_eq!(t.col_widths.get(&0), Some(&80.0));
+        assert_eq!(t.col_widths.get(&1), Some(&120.0)); // was col 2
+        assert_eq!(t.col_widths.get(&2), Some(&150.0)); // was col 3
+    }
+
+    #[test]
+    fn test_delete_row_shifts_row_names() {
+        let mut t = make_table(4, 1);
+        t.row_names.insert(2, "Total".to_string());
+        t.row_names.insert(3, "Footer".to_string());
+        t.delete_row(1);
+        assert_eq!(t.row_names.get(&1), Some(&"Total".to_string())); // was row 2
+        assert_eq!(t.row_names.get(&2), Some(&"Footer".to_string())); // was row 3
+    }
+
+    #[test]
+    fn test_delete_col_shifts_col_names() {
+        let mut t = make_table(1, 4);
+        t.col_names.insert(2, "Price".to_string());
+        t.col_names.insert(3, "Qty".to_string());
+        t.delete_col(1);
+        assert_eq!(t.col_names.get(&1), Some(&"Price".to_string())); // was col 2
+        assert_eq!(t.col_names.get(&2), Some(&"Qty".to_string())); // was col 3
+    }
+
+    #[test]
+    fn test_copy_cell_from_empty_source() {
+        let mut t = make_table(2, 2);
+        t.copy_cell((0, 0), (1, 1)); // copy empty cell
+        let dest = t.cells.get(&(1, 1));
+        assert!(
+            dest.is_none() || dest.unwrap().source.is_empty(),
+            "Copying empty cell should produce empty destination"
+        );
+    }
+
+    #[test]
+    fn test_copy_cell_shifts_range_refs() {
+        let mut t = make_table(5, 5);
+        t.set_cell_source(0, 0, "=SUM(A1:A3)".to_string());
+        t.copy_cell((0, 0), (1, 1));
+        assert_eq!(t.cells[&(1, 1)].source, "=SUM(B2:B4)");
+    }
+
+    #[test]
+    fn test_copy_cell_with_pinned_refs() {
+        let mut t = make_table(5, 5);
+        t.set_cell_source(0, 0, "=$A$1+B2".to_string());
+        t.copy_cell((0, 0), (2, 2));
+        assert_eq!(t.cells[&(2, 2)].source, "=$A$1+D4");
+    }
+
+    #[test]
+    fn test_move_cell_multiple_refs_updated() {
+        let mut t = make_table(4, 4);
+        t.set_cell_source(0, 0, "42".to_string());
+        t.set_cell_source(1, 0, "=A1".to_string());
+        t.set_cell_source(2, 0, "=A1*2".to_string());
+        t.set_cell_source(3, 0, "=SUM(A1, B1)".to_string());
+        t.move_cell((0, 0), (0, 3));
+        assert_eq!(t.cells[&(1, 0)].source, "=A4");
+        assert_eq!(t.cells[&(2, 0)].source, "=A4*2");
+        // SUM(A1, B1) -> SUM(A4, B1)
+        assert!(t.cells[&(3, 0)].source.contains("A4"));
+    }
+
+    #[test]
+    fn test_pixel_width_with_custom_sizes() {
+        let mut t = make_table(2, 3);
+        t.col_widths.insert(0, 50.0);
+        t.col_widths.insert(1, 150.0);
+        // col 2 uses default 100.0
+        assert_eq!(t.pixel_width(), 50.0 + 150.0 + 100.0 + 2.0);
+    }
+
+    #[test]
+    fn test_pixel_height_with_custom_sizes() {
+        let mut t = make_table(3, 1);
+        t.row_heights.insert(0, 40.0);
+        // rows 1, 2 use default 28.0
+        let header_bar = 30.0;
+        assert_eq!(t.pixel_height(), header_bar + 40.0 + 28.0 + 28.0 + 2.0);
+    }
+
+    #[test]
+    fn test_prettify_formula_with_both_headers() {
+        let mut t = make_table(4, 3);
+        t.header_rows = 1;
+        t.header_cols = 1;
+        t.set_cell_source(0, 0, "".to_string()); // corner
+        t.set_cell_source(1, 0, "Price".to_string());
+        t.set_cell_source(2, 0, "Qty".to_string());
+        t.set_cell_source(0, 1, "Apple".to_string());
+        t.set_cell_source(0, 2, "Banana".to_string());
+        // B2 = "Price" col, "Apple" row -> should prettify
+        assert_eq!(t.prettify_formula("=B2"), "=Price.Apple");
     }
 }

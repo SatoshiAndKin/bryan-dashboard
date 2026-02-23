@@ -1,4 +1,6 @@
-After every major change, be sure to `cargo fmt` `cargo clippy` and `git commit`. Then `cargo nextest` and fix any bugs. Once bugs are fixed, you can check off the TODO and commit again. Then, you can move on to the next todo.
+After every major change, be sure to `cargo fmt` `cargo clippy --all-targets` and `cargo test`. All three must pass cleanly (zero warnings, zero errors) before committing. Then `git commit`. Fix any regressions before moving on.
+
+Clippy must be run with `--all-targets` to catch issues in both the main binary and test code.
 
 # Todos
 

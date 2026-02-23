@@ -310,7 +310,7 @@ mod tests {
             number_format: NumberFormat::Fixed(2),
             ..Default::default()
         };
-        assert_eq!(fmt.format_value(&CellValue::Number(3.14159)), "3.14");
+        assert_eq!(fmt.format_value(&CellValue::Number(1.23456)), "1.23");
         assert_eq!(fmt.format_value(&CellValue::Number(42.0)), "42.00");
     }
 
@@ -346,7 +346,7 @@ mod tests {
     fn test_cell_value_display() {
         assert_eq!(CellValue::Empty.to_string(), "");
         assert_eq!(CellValue::Number(42.0).to_string(), "42");
-        assert_eq!(CellValue::Number(3.14).to_string(), "3.140000");
+        assert_eq!(CellValue::Number(1.23).to_string(), "1.230000");
         assert_eq!(CellValue::Text("hello".into()).to_string(), "hello");
         assert_eq!(CellValue::Error("#REF!".into()).to_string(), "#REF!");
     }

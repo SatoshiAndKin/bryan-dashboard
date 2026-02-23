@@ -49,6 +49,7 @@ impl Sheet {
         self.tables.iter_mut().find(|t| t.id == id)
     }
 
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub fn table_by_name(&self, name: &str) -> Option<&TableModel> {
         self.tables.iter().find(|t| t.name == name)
     }

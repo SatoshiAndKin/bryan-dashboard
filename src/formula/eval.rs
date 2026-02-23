@@ -414,7 +414,10 @@ fn get_optional_chain_id(args: &[Expr], ctx: &EvalContext) -> Option<u64> {
 fn validate_chain(requested: Option<u64>, bh: &BlockHead) -> Result<(), CellValue> {
     if let Some(chain) = requested {
         if bh.chain_id != chain {
-            return Err(CellValue::Error(format!("#CHAIN! expected {chain}, got {}", bh.chain_id)));
+            return Err(CellValue::Error(format!(
+                "#CHAIN! expected {chain}, got {}",
+                bh.chain_id
+            )));
         }
     }
     Ok(())
@@ -880,5 +883,142 @@ mod tests {
         recalculate_table(&mut t);
         assert_eq!(t.cells[&(1, 1)].computed, CellValue::Number(15.0));
         assert_eq!(t.cells[&(1, 2)].computed, CellValue::Number(25.0));
+    }
+
+    #[test]
+    fn test_cross_table_range_not_found() {
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=SUM(NoTable::A1:A3)".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(t.cells[&(0, 0)].computed, CellValue::Error(_)));
+    }
+
+    #[test]
+    fn test_cross_sheet_ref_with_all_tables() {
+        let mut t1 = TableModel::new(1, "Table1".to_string(), 2, 1);
+        t1.set_cell_source(0, 0, "99".to_string());
+        recalculate_table(&mut t1);
+
+        let mut t2 = TableModel::new(2, "Table2".to_string(), 1, 1);
+        t2.set_cell_source(0, 0, "=Sheet1::Table1::A1".to_string());
+
+        let all_tables: Vec<(&str, &TableModel)> = vec![("Sheet1", &t1)];
+        let pending = std::cell::RefCell::new(Vec::<String>::new());
+        // Build a custom EvalContext with all_tables
+        // Use recalculate_table_with_ctx which uses siblings only
+        // For cross-sheet, we'd need a different code path.
+        // Test the eval directly instead.
+        let ctx = EvalContext {
+            current: &t2,
+            siblings: &[],
+            all_tables,
+            block_head: None,
+            balance_cache: None,
+            pending_lookups: Some(&pending),
+            now_secs: 0.0,
+        };
+        let expr = crate::formula::parser::parse_formula("=Sheet1::Table1::A1").unwrap();
+        let result = evaluate(&expr, &ctx);
+        assert_eq!(result, CellValue::Number(99.0));
+    }
+
+    #[test]
+    fn test_cross_sheet_ref_not_found() {
+        let t = make_table(1, 1);
+        let ctx = EvalContext {
+            current: &t,
+            siblings: &[],
+            all_tables: Vec::new(),
+            block_head: None,
+            balance_cache: None,
+            pending_lookups: None,
+            now_secs: 0.0,
+        };
+        let expr = crate::formula::parser::parse_formula("=NoSheet::NoTable::A1").unwrap();
+        let result = evaluate(&expr, &ctx);
+        assert_eq!(result, CellValue::Error("#REF!".to_string()));
+    }
+
+    #[test]
+    fn test_eth_call_not_enough_args() {
+        let mut t = make_table(2, 1);
+        t.set_cell_source(
+            0,
+            0,
+            "0x0000000000000000000000000000000000000001".to_string(),
+        );
+        t.set_cell_source(0, 1, "=ETH_CALL(A1)".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(t.cells[&(0, 1)].computed, CellValue::Error(_)));
+    }
+
+    #[test]
+    fn test_block_number_wrong_chain() {
+        let bh = crate::eth::BlockHead {
+            number: 100,
+            hash: "0xabc".to_string(),
+            timestamp: 1000,
+            base_fee: None,
+            chain_id: 1,
+        };
+        let mut t = make_table(1, 1);
+        t.set_cell_source(0, 0, "=BLOCK_NUMBER(42)".to_string());
+        recalculate_table_full(&mut t, &[], Some(&bh));
+        match &t.cells[&(0, 0)].computed {
+            CellValue::Error(e) => {
+                assert!(e.contains("#CHAIN!"), "Expected #CHAIN! error, got: {}", e)
+            }
+            other => panic!("Expected Error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_sum_cross_table_range() {
+        let mut t1 = TableModel::new(1, "Data".to_string(), 3, 1);
+        t1.set_cell_source(0, 0, "10".to_string());
+        t1.set_cell_source(0, 1, "20".to_string());
+        t1.set_cell_source(0, 2, "30".to_string());
+        recalculate_table(&mut t1);
+
+        let mut t2 = TableModel::new(2, "Summary".to_string(), 1, 1);
+        t2.set_cell_source(0, 0, "=SUM(Data::A1:A3)".to_string());
+
+        let siblings = vec![t1];
+        recalculate_table_full(&mut t2, &siblings, None);
+        assert_eq!(t2.cells[&(0, 0)].computed, CellValue::Number(60.0));
+    }
+
+    #[test]
+    fn test_range_standalone_is_error() {
+        let mut t = make_table(3, 1);
+        t.set_cell_source(0, 0, "1".to_string());
+        t.set_cell_source(0, 1, "2".to_string());
+        // A range outside of a function is an error
+        t.set_cell_source(0, 2, "=A1:A2".to_string());
+        recalculate_table(&mut t);
+        assert!(matches!(t.cells[&(0, 2)].computed, CellValue::Error(_)));
+    }
+
+    #[test]
+    fn test_eth_call_cached_result() {
+        use crate::formula::graph::recalculate_table_with_ctx;
+
+        let addr = "0x0000000000000000000000000000000000000001";
+        let arg_addr = "0x0000000000000000000000000000000000000002";
+        let mut cache = std::collections::HashMap::new();
+        let cache_key = format!("call:{}:balanceOf(address):{}", addr, arg_addr);
+        cache.insert(cache_key, "1000".to_string());
+
+        let mut t = make_table(4, 1);
+        t.set_cell_source(0, 0, addr.to_string());
+        t.set_cell_source(0, 1, "balanceOf(address)".to_string());
+        t.set_cell_source(0, 2, arg_addr.to_string());
+        // ETH_CALL with 3 args: address, signature, arg from cell
+        t.set_cell_source(0, 3, "=ETH_CALL(A1, A2, A3)".to_string());
+        recalculate_table_with_ctx(&mut t, &[], None, Some(&cache), None);
+        assert_eq!(
+            t.cells[&(0, 3)].computed,
+            CellValue::Text("1000".to_string())
+        );
     }
 }

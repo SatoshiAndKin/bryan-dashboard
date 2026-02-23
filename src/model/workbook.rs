@@ -52,6 +52,7 @@ impl Default for WorkbookState {
 
 impl WorkbookState {
     /// Migrate v1 (flat tables) to v2 (sheets containing tables)
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub fn migrate_if_needed(&mut self) {
         if self.version < 2 && !self.tables.is_empty() {
             let mut sheet = Sheet {
@@ -129,6 +130,7 @@ impl WorkbookState {
     }
 
     /// Find a table by name across all sheets in the active sheet first, then others
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub fn find_table_by_name(&self, name: &str) -> Option<&TableModel> {
         // Search active sheet first
         if let Some(sheet) = self.active_sheet() {
@@ -205,5 +207,54 @@ mod tests {
             wb.sheets.iter().find(|s| s.id == id2).unwrap().name,
             "Sheet 1 (2)"
         );
+    }
+
+    #[test]
+    fn test_migrate_v1_to_v2() {
+        use crate::model::table::TableModel;
+        let mut wb = WorkbookState {
+            version: 1,
+            sheets: Vec::new(),
+            active_sheet_id: 0,
+            next_sheet_id: 1,
+            tables: vec![
+                TableModel::new(1, "T1".to_string(), 3, 3),
+                TableModel::new(2, "T2".to_string(), 2, 2),
+            ],
+            active_table_id: 1,
+            next_table_id: 3,
+        };
+        wb.migrate_if_needed();
+        assert_eq!(wb.version, 2);
+        assert_eq!(wb.sheets.len(), 1);
+        assert_eq!(wb.sheets[0].tables.len(), 2);
+        assert!(wb.tables.is_empty());
+        // Headers should be set to 1 if they were 0
+        for t in &wb.sheets[0].tables {
+            assert!(t.header_rows >= 1);
+            assert!(t.header_cols >= 1);
+        }
+    }
+
+    #[test]
+    fn test_find_table_by_name() {
+        let mut wb = WorkbookState::default();
+        if let Some(sheet) = wb.active_sheet_mut() {
+            sheet.tables[0].name = "Prices".to_string();
+        }
+        assert!(wb.find_table_by_name("Prices").is_some());
+        assert!(wb.find_table_by_name("Nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_find_table_by_name_active_sheet_first() {
+        let mut wb = WorkbookState::default();
+        let id2 = wb.add_sheet("Sheet 2".to_string());
+        // Both sheets have "Table 1"
+        assert_eq!(wb.active_sheet_id, id2);
+        let result = wb.find_table_by_name("Table 1");
+        assert!(result.is_some());
+        // Should return the active sheet's table
+        assert_eq!(result.unwrap().id, wb.active_sheet().unwrap().tables[0].id);
     }
 }

@@ -39,7 +39,15 @@ fn snap_no_overlap(sheet: &mut Sheet, moved_tid: TableId) {
         let rects: Vec<_> = sheet
             .tables
             .iter()
-            .map(|t| (t.id, t.canvas_x, t.canvas_y, t.pixel_width(), t.pixel_height()))
+            .map(|t| {
+                (
+                    t.id,
+                    t.canvas_x,
+                    t.canvas_y,
+                    t.pixel_width(),
+                    t.pixel_height(),
+                )
+            })
             .collect();
         let n = rects.len();
         for i in 0..n {
@@ -49,9 +57,23 @@ fn snap_no_overlap(sheet: &mut Sheet, moved_tid: TableId) {
                 let overlap_x = (ax < bx + bw + gap) && (ax + aw + gap > bx);
                 let overlap_y = (ay < by + bh + gap) && (ay + ah + gap > by);
                 if overlap_x && overlap_y {
-                    let push_id = if id_b == moved_tid { id_b } else if id_a == moved_tid { id_a } else { id_b };
-                    let (fx, fy, fw, fh) = if push_id == id_a { (ax, ay, aw, ah) } else { (bx, by, bw, bh) };
-                    let (ox, oy, ow, oh) = if push_id == id_a { (bx, by, bw, bh) } else { (ax, ay, aw, ah) };
+                    let push_id = if id_b == moved_tid {
+                        id_b
+                    } else if id_a == moved_tid {
+                        id_a
+                    } else {
+                        id_b
+                    };
+                    let (fx, fy, fw, fh) = if push_id == id_a {
+                        (ax, ay, aw, ah)
+                    } else {
+                        (bx, by, bw, bh)
+                    };
+                    let (ox, oy, ow, oh) = if push_id == id_a {
+                        (bx, by, bw, bh)
+                    } else {
+                        (ax, ay, aw, ah)
+                    };
                     let push_right = ox + ow + gap - fx;
                     let push_left = fx + fw + gap - ox;
                     let push_down = oy + oh + gap - fy;
@@ -74,7 +96,9 @@ fn snap_no_overlap(sheet: &mut Sheet, moved_tid: TableId) {
                     break;
                 }
             }
-            if nudged { break; }
+            if nudged {
+                break;
+            }
         }
         if !nudged {
             break;
@@ -86,8 +110,16 @@ fn snap_no_overlap(sheet: &mut Sheet, moved_tid: TableId) {
 pub enum PendingDelete {
     Sheet(SheetId, String),
     Table(TableId, String),
-    Rows { tid: TableId, min_row: u32, max_row: u32 },
-    Cols { tid: TableId, min_col: u32, max_col: u32 },
+    Rows {
+        tid: TableId,
+        min_row: u32,
+        max_row: u32,
+    },
+    Cols {
+        tid: TableId,
+        min_col: u32,
+        max_col: u32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -131,8 +163,6 @@ impl UiState {
             _ => self.selected.map(|(tid, c, r)| (tid, c, r, c, r)),
         }
     }
-
-
 }
 
 #[component]
@@ -158,9 +188,10 @@ pub fn WorkbookShell() -> Element {
         use_signal(std::collections::HashMap::new);
     let mut buddy_messages: Signal<Vec<(String, f64)>> = use_signal(Vec::new);
     // Table header drag state: (table_id, start_mouse_x, start_mouse_y, start_canvas_x, start_canvas_y)
-    let mut table_drag: Signal<Option<(TableId, f64, f64, f32, f32)>> = use_signal(|| None);
+    type TableDragState = Option<(TableId, f64, f64, f32, f32)>;
+    let mut table_drag: Signal<TableDragState> = use_signal(|| None);
     // Current drag offset for real-time position updates during drag
-    let mut drag_offset: Signal<Option<(TableId, f32, f32)>> = use_signal(|| None);
+    let drag_offset: Signal<Option<(TableId, f32, f32)>> = use_signal(|| None);
     let mut prev_block_nums: Signal<std::collections::HashMap<u64, u64>> =
         use_signal(std::collections::HashMap::new);
 
@@ -1500,7 +1531,7 @@ pub fn WorkbookShell() -> Element {
                     let active_sheet_name = wb.active_sheet().map(|s| s.name.as_str()).unwrap_or("Sheet");
                     let msg = match &pd {
                         PendingDelete::Sheet(_, name) => format!("Delete sheet \"{}\"? All tables and data in it will be lost.", name),
-                        PendingDelete::Table(tid, name) => {
+                        PendingDelete::Table(_tid, name) => {
                             format!("Delete {}::{}? All data in it will be lost.", active_sheet_name, name)
                         }
                         PendingDelete::Rows { tid, min_row, max_row } => {
@@ -1952,5 +1983,143 @@ fn now_string() -> String {
     #[cfg(not(target_arch = "wasm32"))]
     {
         "now".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_selection_range_single_cell() {
+        let ui = UiState {
+            selected: Some((1, 3, 5)),
+            ..Default::default()
+        };
+        assert_eq!(ui.selection_range(), Some((1, 3, 5, 3, 5)));
+    }
+
+    #[test]
+    fn test_selection_range_multi_cell() {
+        let ui = UiState {
+            selected: Some((1, 3, 5)),
+            selection_anchor: Some((1, 1, 2)),
+            selection_end: Some((1, 4, 6)),
+            ..Default::default()
+        };
+        assert_eq!(ui.selection_range(), Some((1, 1, 2, 4, 6)));
+    }
+
+    #[test]
+    fn test_selection_range_inverted_coords() {
+        let ui = UiState {
+            selected: Some((1, 5, 5)),
+            selection_anchor: Some((1, 5, 5)),
+            selection_end: Some((1, 2, 1)),
+            ..Default::default()
+        };
+        // Should normalize to min/max
+        assert_eq!(ui.selection_range(), Some((1, 2, 1, 5, 5)));
+    }
+
+    #[test]
+    fn test_selection_range_different_tables() {
+        let ui = UiState {
+            selected: Some((1, 0, 0)),
+            selection_anchor: Some((1, 0, 0)),
+            selection_end: Some((2, 3, 3)), // different table
+            ..Default::default()
+        };
+        // Cross-table selection falls back to single cell
+        assert_eq!(ui.selection_range(), Some((1, 0, 0, 0, 0)));
+    }
+
+    #[test]
+    fn test_selection_range_none() {
+        let ui = UiState::default();
+        assert_eq!(ui.selection_range(), None);
+    }
+
+    #[test]
+    fn test_selection_range_no_anchor() {
+        let ui = UiState {
+            selected: Some((1, 2, 3)),
+            selection_anchor: None,
+            selection_end: None,
+            ..Default::default()
+        };
+        assert_eq!(ui.selection_range(), Some((1, 2, 3, 2, 3)));
+    }
+
+    #[test]
+    fn test_snap_no_overlap_separates_tables() {
+        use crate::model::sheet::Sheet;
+        use crate::model::table::TableModel;
+
+        let mut t1 = TableModel::new(1, "T1".to_string(), 3, 3);
+        t1.canvas_x = 16.0;
+        t1.canvas_y = 16.0;
+
+        let mut t2 = TableModel::new(2, "T2".to_string(), 3, 3);
+        // Place t2 exactly on top of t1 (overlapping)
+        t2.canvas_x = 16.0;
+        t2.canvas_y = 16.0;
+
+        let mut sheet = Sheet {
+            id: 1,
+            name: "Test".to_string(),
+            tables: vec![t1, t2],
+            next_table_id: 3,
+            active_table_id: 2,
+        };
+
+        snap_no_overlap(&mut sheet, 2);
+
+        let t1 = &sheet.tables[0];
+        let t2 = &sheet.tables[1];
+        // After snap, tables should not overlap
+        let gap = 16.0;
+        let overlap_x = (t1.canvas_x < t2.canvas_x + t2.pixel_width() + gap)
+            && (t1.canvas_x + t1.pixel_width() + gap > t2.canvas_x);
+        let overlap_y = (t1.canvas_y < t2.canvas_y + t2.pixel_height() + gap)
+            && (t1.canvas_y + t1.pixel_height() + gap > t2.canvas_y);
+        assert!(
+            !(overlap_x && overlap_y),
+            "Tables should not overlap after snap. t1=({}, {}), t2=({}, {})",
+            t1.canvas_x,
+            t1.canvas_y,
+            t2.canvas_x,
+            t2.canvas_y
+        );
+    }
+
+    #[test]
+    fn test_snap_no_overlap_enforces_margin() {
+        use crate::model::sheet::Sheet;
+        use crate::model::table::TableModel;
+
+        let mut t1 = TableModel::new(1, "T1".to_string(), 2, 2);
+        t1.canvas_x = 0.0; // too close to edge
+        t1.canvas_y = 0.0;
+
+        let mut sheet = Sheet {
+            id: 1,
+            name: "Test".to_string(),
+            tables: vec![t1],
+            next_table_id: 2,
+            active_table_id: 1,
+        };
+
+        snap_no_overlap(&mut sheet, 1);
+
+        let t = &sheet.tables[0];
+        assert!(
+            t.canvas_x >= 16.0,
+            "Table should be at least 16px from left edge"
+        );
+        assert!(
+            t.canvas_y >= 16.0,
+            "Table should be at least 16px from top edge"
+        );
     }
 }

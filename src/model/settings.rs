@@ -30,6 +30,7 @@ impl RpcEntry {
             .unwrap_or(false)
     }
 
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub fn is_http(&self) -> bool {
         self.primary_url()
             .map(|u| {
@@ -83,6 +84,7 @@ impl AppSettings {
         self.rpc_entries.iter().find(|e| e.chain_id == chain_id)
     }
 
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub fn has_chain_id(&self, chain_id: u64) -> bool {
         self.rpc_entries.iter().any(|e| e.chain_id == chain_id)
     }

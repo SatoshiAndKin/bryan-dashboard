@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn test_parse_literal_number() {
         assert_eq!(parse_literal("42"), CellValue::Number(42.0));
-        assert_eq!(parse_literal("3.14"), CellValue::Number(3.14));
+        assert_eq!(parse_literal("2.5"), CellValue::Number(2.5));
         assert_eq!(parse_literal(" -1 "), CellValue::Number(-1.0));
     }
 

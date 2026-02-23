@@ -12,11 +12,13 @@ pub struct BlockHead {
     pub chain_id: u64,
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub fn parse_hex_u64(s: &str) -> Option<u64> {
     let s = s.strip_prefix("0x").unwrap_or(s);
     u64::from_str_radix(s, 16).ok()
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub fn parse_block_head(val: &serde_json::Value) -> Option<BlockHead> {
     let obj = val.as_object()?;
     let number = parse_hex_u64(obj.get("number")?.as_str()?)?;

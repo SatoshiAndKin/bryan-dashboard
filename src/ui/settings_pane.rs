@@ -9,6 +9,7 @@ use crate::eth::BlockHead;
 use crate::model::settings::{AppSettings, RpcEntry};
 
 #[derive(Clone, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 enum RpcTestResult {
     Testing,
     Ok(u64),
@@ -240,12 +241,13 @@ pub fn SettingsPane(
                                 let interval = draft_interval.read().parse::<u32>().unwrap_or(10).max(1);
                                 let max_retries = draft_max_retries.read().parse::<u32>().unwrap_or(3);
                                 let retry_backoff = draft_retry_backoff.read().parse::<u64>().unwrap_or(1000);
-                                let mut new_settings = AppSettings::default();
-                                new_settings.poll_interval_secs = interval;
-                                new_settings.etherscan_api_key = draft_etherscan_key.read().trim().to_string();
-                                new_settings.rpc_entries = entries;
-                                new_settings.max_retries = max_retries;
-                                new_settings.retry_backoff_ms = retry_backoff;
+                                let new_settings = AppSettings {
+                                    poll_interval_secs: interval,
+                                    etherscan_api_key: draft_etherscan_key.read().trim().to_string(),
+                                    rpc_entries: entries,
+                                    max_retries,
+                                    retry_backoff_ms: retry_backoff,
+                                };
                                 on_save.call(new_settings);
                                 return;
                             }
@@ -267,12 +269,13 @@ pub fn SettingsPane(
                                     let interval = draft_interval.read().parse::<u32>().unwrap_or(10).max(1);
                                     let max_retries = draft_max_retries.read().parse::<u32>().unwrap_or(3);
                                     let retry_backoff = draft_retry_backoff.read().parse::<u64>().unwrap_or(1000);
-                                    let mut new_settings = AppSettings::default();
-                                    new_settings.poll_interval_secs = interval;
-                                    new_settings.etherscan_api_key = draft_etherscan_key.read().trim().to_string();
-                                    new_settings.rpc_entries = draft_entries.read().clone();
-                                    new_settings.max_retries = max_retries;
-                                    new_settings.retry_backoff_ms = retry_backoff;
+                                    let new_settings = AppSettings {
+                                        poll_interval_secs: interval,
+                                        etherscan_api_key: draft_etherscan_key.read().trim().to_string(),
+                                        rpc_entries: draft_entries.read().clone(),
+                                        max_retries,
+                                        retry_backoff_ms: retry_backoff,
+                                    };
                                     on_save.call(new_settings);
                                 }
                             });
