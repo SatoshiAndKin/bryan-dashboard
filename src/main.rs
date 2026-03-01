@@ -12,6 +12,11 @@ const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 
 fn main() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        console_error_panic_hook::set_once();
+        tracing_wasm::set_as_global_default();
+    }
     dioxus::launch(App);
 }
 

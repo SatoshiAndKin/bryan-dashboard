@@ -17,9 +17,7 @@ pub fn load_workbook() -> WorkbookState {
                     return wb;
                 }
                 Err(e) => {
-                    web_sys::console::error_1(
-                        &format!("Failed to deserialize workbook: {e}").into(),
-                    );
+                    tracing::error!("Failed to deserialize workbook: {e}");
                 }
             }
         }
@@ -33,7 +31,7 @@ pub fn save_workbook(wb: &WorkbookState) {
         match serde_json::to_string(wb) {
             Ok(json) => write_local_storage(STORAGE_KEY, &json),
             Err(e) => {
-                web_sys::console::error_1(&format!("Failed to serialize workbook: {e}").into());
+                tracing::error!("Failed to serialize workbook: {e}");
             }
         }
     }
@@ -50,9 +48,7 @@ pub fn load_settings() -> AppSettings {
             match serde_json::from_str::<AppSettings>(&json) {
                 Ok(s) => return s,
                 Err(e) => {
-                    web_sys::console::error_1(
-                        &format!("Failed to deserialize settings: {e}").into(),
-                    );
+                    tracing::error!("Failed to deserialize settings: {e}");
                 }
             }
         }
@@ -66,7 +62,7 @@ pub fn save_settings(settings: &AppSettings) {
         match serde_json::to_string(settings) {
             Ok(json) => write_local_storage(SETTINGS_KEY, &json),
             Err(e) => {
-                web_sys::console::error_1(&format!("Failed to serialize settings: {e}").into());
+                tracing::error!("Failed to serialize settings: {e}");
             }
         }
     }

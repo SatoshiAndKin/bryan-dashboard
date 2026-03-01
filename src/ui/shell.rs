@@ -2090,7 +2090,7 @@ async fn connect_eth_ws(
     let ws = match web_sys::WebSocket::new(url) {
         Ok(ws) => ws,
         Err(e) => {
-            web_sys::console::error_1(&format!("WebSocket connect failed: {:?}", e).into());
+            tracing::error!("WebSocket connect failed: {:?}", e);
             return;
         }
     };
@@ -2132,7 +2132,7 @@ async fn connect_eth_ws(
     onmessage.forget();
 
     let onerror = Closure::<dyn FnMut(web_sys::ErrorEvent)>::new(move |e: web_sys::ErrorEvent| {
-        web_sys::console::error_1(&format!("WebSocket error: {:?}", e.message()).into());
+        tracing::error!("WebSocket error: {:?}", e.message());
     });
     ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
     onerror.forget();
@@ -2167,7 +2167,7 @@ async fn poll_eth_http(
                 }
             }
             Err(e) => {
-                web_sys::console::error_1(&format!("HTTP poll error: {e}").into());
+                tracing::error!("HTTP poll error: {e}");
             }
         }
         gloo_timers::future::sleep(std::time::Duration::from_secs(interval_secs as u64)).await;
@@ -2228,9 +2228,7 @@ async fn fetch_balances(
                 }
             }
             Err(e) => {
-                web_sys::console::error_1(
-                    &format!("eth_getBalance failed for {}: {}", addr, e).into(),
-                );
+                tracing::error!("eth_getBalance failed for {}: {}", addr, e);
             }
         }
     }

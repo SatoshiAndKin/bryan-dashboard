@@ -1,0 +1,21 @@
+{
+  "name": "Bryan Dashboard",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "latest",
+      "targets": "wasm32-unknown-unknown"
+    }
+  },
+  "postCreateCommand": "rustup target add wasm32-unknown-unknown && curl -sSL https://dioxus.dev/install.sh | sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates"
+      ]
+    }
+  },
+  "forwardPorts": [8080]
+}
