@@ -19,9 +19,9 @@ dependencies = [
 
 [[package]]
 name = "alloy"
-version = "1.7.3"
+version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4973038846323e4e69a433916522195dce2947770076c03078fc21c80ea0f1c4"
+checksum = "d8010fc7e9e8643ef4e758cdccf3eef26734594aedf88a9d5ed35e51837d42ef"
 dependencies = [
  "alloy-core",
 ]
